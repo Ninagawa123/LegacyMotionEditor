@@ -1,0 +1,23 @@
+# LegacyMotionEditor — macOS / Windows / Linux (Python 3.10+)
+# Copyright (c) 2026 Izumi Ninagawa
+# License: MIT License
+#
+# Core (LegacyMotionEditor.py)
+numpy
+Qt.py
+PySide6
+vtk
+NodeGraphQt
+trimesh
+pycollada
+
+# Optional: Valkey streaming (LME ↔ MuJoCoStudio / PhysicalOn)
+valkey
+
+# Optional: Pad Monitor (PC gamepad) and MuJoCoStudio preview
+# pygame-ce provides the `pygame` import name.
+pygame-ce
+mujoco
+
+# macOS: DualShock / DualSense via Apple GameController (pygame HIDAPI often misses them)
+pyobjc-framework-GameController; sys_platform == "darwin"
