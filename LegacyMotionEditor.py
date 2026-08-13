@@ -20,6 +20,8 @@ import os
 import traceback
 import ast
 
+_IS_MACOS = (sys.platform == "darwin")
+
 # Qt.py経由で統一（PySide6/PyQt5を自動選択）
 # 環境変数 QT_PREFERRED_BINDING=PySide6 を推奨
 from Qt import QtWidgets, QtCore, QtGui
@@ -39,6 +41,7 @@ import datetime
 import json
 import copy
 import math
+import time
 import numpy as np
 import threading
 
@@ -3223,6 +3226,13 @@ class STLViewerWidget(QtWidgets.QWidget):
         self.base_connected_node = None
         self.text_actors = []
         self._initialized = True
+        # Guards VTK actor transform data (vtkTransform/vtkMatrix4x4 — plain CPU-side
+        # objects, not GL calls) against being read by Render() on this (GUI) thread
+        # while being mutated by the background computed-motion IK worker thread (see
+        # main()). Unlike an earlier attempt at threading the *render* itself, the GL
+        # context always stays on this thread here — only this CPU-side data is
+        # shared, so no MakeCurrent() dance is needed.
+        self._vtk_lock = threading.Lock()
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -3252,7 +3262,8 @@ class STLViewerWidget(QtWidgets.QWidget):
         self.render_window.AddRenderer(self.renderer)
 
         # Initialize offscreen renderer
-        self.offscreen_renderer = OffscreenRenderer(self.render_window, self.renderer)
+        self.offscreen_renderer = OffscreenRenderer(
+            self.render_window, self.renderer, render_lock=self._vtk_lock)
 
         # Mouse interaction state
         self.last_mouse_pos = None
@@ -3580,6 +3591,8 @@ class STLViewerWidget(QtWidgets.QWidget):
         try:
             if not self._initialized:
                 return
+            # OffscreenRenderer takes _vtk_lock itself, only around the actual VTK
+            # render+readback call — see its render_lock docstring.
             self.offscreen_renderer.update_display(self.vtk_display)
         except Exception as e:
             print(f"[VTK] Render error: {e}")
@@ -4196,6 +4209,13 @@ class STLViewerWidget(QtWidgets.QWidget):
 
     def cleanup(self):
         """STLビューアのリソースをクリーンアップ"""
+        # cleanup()はaboutToQuit経由の明示呼び出しと__del__の両方から呼ばれ得る。
+        # VTKオブジェクトの解放後に二重で解放処理を行うとネイティブクラッシュ
+        # (セグメンテーション違反)を起こすため、一度だけ実行するようにガードする。
+        if getattr(self, '_cleanup_done', False):
+            return
+        self._cleanup_done = True
+
         # ハイライト点滅タイマーを止める。動いたままだと、削除済み/解放済みの
         # selected_actorに対して_toggle_highlight()がsafe_render()経由で
         # ネイティブクラッシュを起こすことがある。
@@ -4628,6 +4648,13 @@ class CustomNodeGraph(NodeGraph):
 
     def cleanup(self):
         """リソースのクリーンアップ"""
+        # cleanup()はaboutToQuit経由の明示呼び出しと__del__の両方から呼ばれ得る。
+        # 2回目以降は既に解放済みのノード/インスペクタウィンドウ(C++側は削除済み)に
+        # 触れてネイティブクラッシュを起こし得るため、一度だけ実行するようにガードする。
+        if getattr(self, '_cleanup_done', False):
+            return
+        self._cleanup_done = True
+
         try:
             print("Starting cleanup process...")
             
@@ -7269,7 +7296,15 @@ class JointEditorPanel(QtWidgets.QWidget):
         options_layout.setContentsMargins(0, 0, 0, 0)
         options_layout.setSpacing(12)
 
-        dark_gray_style = "color: #555555;"
+        # UbuntuではQCheckBox::indicatorの枠線がパレット任せになり背景に埋もれて
+        # 見えなくなる（Macはネイティブ描画で枠線が常に見える）ため、枠線だけでなく
+        # 背景をグレーにして周囲(白)とのコントラストで箱の存在が分かるようにする。
+        dark_gray_style = (
+            "QCheckBox { color: #555555; } "
+            "QCheckBox::indicator { width: 13px; height: 13px; "
+            "border: 1px solid #888888; border-radius: 2px; background-color: #c0c0c0; } "
+            "QCheckBox::indicator:checked { background-color: #4a90d9; border: 1px solid #2f6fb5; }"
+        )
 
         self.always_on_top_checkbox = QtWidgets.QCheckBox("Stay on Top")
         self.always_on_top_checkbox.setStyleSheet(dark_gray_style)
@@ -8245,6 +8280,17 @@ class JointEditorPanel(QtWidgets.QWidget):
 
 
 
+# branch/jump ノードは1tickごとに次ノードへ進む(t=1.0がほぼ即座に成立する
+# instant-transition)ため、Branch/Jumpを高速ループさせる歩行のようなアクション
+# では _get_next_node()/_start_segment() のデバッグprintが毎tick(最大LOOP_HZ)
+# 発行されうる。コンソールへの書き込みが遅い環境(確認済み: 一部のUbuntu環境)
+# では、このprint自体のI/O待ちが tick 処理時間を支配し、要求tick間隔(10ms等)を
+# 大きく超えて実質のtickレートが頭打ちになり、再生全体がスローモーションに
+# 見える原因になっていた。Pose間の通常再生はセグメントが長く遷移頻度が低いため
+# 影響が目立たない。既定で無効にし、必要な時だけTrueにして調査する。
+_PLAYBACK_VERBOSE_LOG = False
+
+
 class PlaybackController(QtCore.QObject):
     """モーション再生を管理"""
 
@@ -8822,15 +8868,17 @@ class PlaybackController(QtCore.QObject):
                         VirtualPoseNode, VirtualDefineNode, VirtualBranchingNode, VirtualJumpNode, VirtualMixNode
                     ))
                     if is_valid_target:
-                        branch_name = "To (red)" if condition_result else "Otherwise (blue)"
-                        if swapped:
-                            branch_name = "Otherwise (blue)" if condition_result else "To (red)"
-                        print(f"[Playback] _get_next_node (Branch -> {branch_name}): {node.name()} -> {target_node.name()}")
+                        if _PLAYBACK_VERBOSE_LOG:
+                            branch_name = "To (red)" if condition_result else "Otherwise (blue)"
+                            if swapped:
+                                branch_name = "Otherwise (blue)" if condition_result else "To (red)"
+                            print(f"[Playback] _get_next_node (Branch -> {branch_name}): {node.name()} -> {target_node.name()}")
                         self._set_ik_gate_for_target(target_node)
                         return target_node
 
             # Fallback: BranchingNode has no valid target from selected port
-            print(f"[Playback] _get_next_node (Branch): {node.name()} has no valid target from selected port")
+            if _PLAYBACK_VERBOSE_LOG:
+                print(f"[Playback] _get_next_node (Branch): {node.name()} has no valid target from selected port")
             return None
 
         # Check if this is a virtual node - use virtual port connections
@@ -8845,22 +8893,26 @@ class PlaybackController(QtCore.QObject):
                 if connected:
                     target_node = connected[0].node()
                     if target_node:
-                        print(f"[Playback] _get_next_node (virtual): {node.name()} -> {target_node.name()}")
+                        if _PLAYBACK_VERBOSE_LOG:
+                            print(f"[Playback] _get_next_node (virtual): {node.name()} -> {target_node.name()}")
                         return target_node
-            print(f"[Playback] _get_next_node (virtual): {node.name()} has no connections")
+            if _PLAYBACK_VERBOSE_LOG:
+                print(f"[Playback] _get_next_node (virtual): {node.name()} has no connections")
             return None
 
         # Default behavior: use _sorted_output_connections (only for real non-BranchingNode)
         connected_nodes = _sorted_output_connections(node)
         if connected_nodes:
             target = connected_nodes[0]
-            # Debug: show all connections for PoseNode
-            if isinstance(node, PoseNode) and len(connected_nodes) > 0:
-                all_names = [n.name() for n in connected_nodes]
-                print(f"[Playback] {node.name()} has connections to: {all_names}")
-            print(f"[Playback] _get_next_node: {node.name()} -> {target.name()}")
+            if _PLAYBACK_VERBOSE_LOG:
+                # Debug: show all connections for PoseNode
+                if isinstance(node, PoseNode) and len(connected_nodes) > 0:
+                    all_names = [n.name() for n in connected_nodes]
+                    print(f"[Playback] {node.name()} has connections to: {all_names}")
+                print(f"[Playback] _get_next_node: {node.name()} -> {target.name()}")
             return target
-        print(f"[Playback] _get_next_node: {node.name()} has no valid connections")
+        if _PLAYBACK_VERBOSE_LOG:
+            print(f"[Playback] _get_next_node: {node.name()} has no valid connections")
         return None
 
     def _resync_playback_tick_clock(self):
@@ -9066,36 +9118,77 @@ class PlaybackController(QtCore.QObject):
 
         force_advance = False
 
+        # Computed-motion state, needed below regardless of which branch runs it.
+        _computed_active_now = (
+            self._computed_motion_active and self._ik_executing
+            and self.motion_runtime is not None and self._computed_func_names
+        )
+
         # Computed motion: call IK every tick; sub-step so walk.t tracks wall-clock dt.
-        if self._computed_motion_active and self._ik_executing and self.motion_runtime is not None and self._computed_func_names:
+        # On non-macOS this is instead driven by a background thread (see main(),
+        # _computed_ik_worker) so it can run at its intended rate without competing
+        # with the GUI thread's rendering — this inline path stays for macOS only,
+        # where the plain same-thread approach already performs fine.
+        if _IS_MACOS and _computed_active_now:
             from LegacyMotionEditor_Utils import PAD_REGISTER_VALUES
             project_code = getattr(self.graph, "project_code", "") or ""
             try:
                 _loop_hz = float((getattr(self.motion_runtime, "_ns", None) or {}).get("LOOP_HZ", 100) or 100)
             except Exception:
                 _loop_hz = 100.0
-            _substeps = max(1, min(int(round(dt_sec * max(1.0, _loop_hz))), 5))
+            # dt_sec is already clamped to <=0.5s above, so this is naturally bounded
+            # (e.g. <=50 substeps at LOOP_HZ=100) without an extra low cap. A previous
+            # hardcoded cap of 5 made computed/IK-driven walking motions fall
+            # permanently behind wall-clock time whenever a tick was delayed beyond
+            # 5/LOOP_HZ seconds — harmless on machines with very steady ~10ms tick
+            # delivery, but a persistent slow-motion effect on machines (e.g. some
+            # Ubuntu setups) where GUI-thread work occasionally delays ticks further.
+            # Pose-to-pose (non-computed) playback doesn't have this issue since its
+            # progress `t` is derived directly from wall-clock elapsed time, not tick
+            # count.
+            _substeps = max(1, int(round(dt_sec * max(1.0, _loop_hz))))
+            # Safety net: if call_function() itself is slow (e.g. heavier ProjectCode,
+            # slower machine), looping the full _substeps count here can make this
+            # single _tick() call take longer, which delays the *next* timer tick,
+            # which raises dt_sec further next time, which raises _substeps further —
+            # a runaway feedback loop that looks like the console freezing and the
+            # motion going into slow motion, worse than plain tick jitter would. Cap
+            # by wall-clock time actually spent, not just step count, so one slow
+            # tick can never compound into a worse one.
+            _substep_deadline = self.elapsed_timer.elapsed() + max(1, int(round(dt_sec * 1000.0)))
             _angles = None
             for _ in range(_substeps):
                 for _fn in self._computed_func_names:
                     if self.motion_runtime.call_function(_fn, project_code, PAD_REGISTER_VALUES):
                         _angles = self.motion_runtime.get_angles_dict()
+                if self.elapsed_timer.elapsed() >= _substep_deadline:
+                    break
             if _angles:
                 self.next_angles.update(_angles)
                 self.prev_angles.update(_angles)
 
-        # 角度を補間（理想値）
-        interp_angles = {}
-        all_joints = set(list(self.prev_angles.keys()) + list(self.next_angles.keys()))
-        for jname in all_joints:
-            a = self.prev_angles.get(jname, 0.0)
-            b = self.next_angles.get(jname, 0.0)
-            t_interp = easing_value(self.next_easings.get(jname, self.interpolation), t)
-            interp_angles[jname] = a + (b - a) * t_interp
+        if _IS_MACOS or not _computed_active_now:
+            # 角度を補間（理想値）
+            interp_angles = {}
+            all_joints = set(list(self.prev_angles.keys()) + list(self.next_angles.keys()))
+            for jname in all_joints:
+                a = self.prev_angles.get(jname, 0.0)
+                b = self.next_angles.get(jname, 0.0)
+                t_interp = easing_value(self.next_easings.get(jname, self.interpolation), t)
+                interp_angles[jname] = a + (b - a) * t_interp
 
-        # Always clamp to joint max_speed. pose_changed → Valkey → MuJoCoStudio.
-        limited_angles = self._apply_joint_speed_limits(interp_angles, dt_sec)
-        self.pose_changed.emit(limited_angles)
+            # Always clamp to joint max_speed. pose_changed → Valkey → MuJoCoStudio.
+            limited_angles = self._apply_joint_speed_limits(interp_angles, dt_sec)
+            self.pose_changed.emit(limited_angles)
+        else:
+            # Angle output for this tick is owned by the background IK worker
+            # instead (applies directly to the model + Valkey, and keeps
+            # self._speed_limited_angles updated under stl_viewer._vtk_lock so the
+            # handoff below, when this segment eventually ends, still sees an
+            # up-to-date position). Only used here as a fallback for the
+            # is_incomplete check just below, which doesn't apply to non-Pose
+            # nodes like the Branch/Jump pair a walk loop cycles through anyway.
+            limited_angles = self._speed_limited_angles
 
         if t >= 1.0 or force_advance:
             # Check if target angles were reached (threshold: 1 degree)
@@ -11063,8 +11156,17 @@ def delete_selected_node(graph):
     else:
         print("No node selected for deletion")
 
-def cleanup_and_exit():
-    """アプリケーションのクリーンアップと終了"""
+def cleanup_and_exit(_also_quit_app=False):
+    """アプリケーションのクリーンアップと終了。
+
+    app.aboutToQuit 経由で呼ばれる時点で、アプリは既にquit処理の最中にある
+    （このシグナル自体がQApplication.quit()呼び出しの結果として発火する）。
+    その状態でさらにQApplication.instance().quit()を呼ぶと、Qtのquit処理へ
+    再入(reentrant)することになり、X11(Ubuntu)のプラットフォームプラグインでは
+    これがセグメンテーション違反を起こすことを確認した（macOSでは未確認）。
+    そのため既定では quit() を呼ばない。起動時エラー時（アプリがまだ
+    quit処理に入っていない）の直接呼び出しでのみ _also_quit_app=True で
+    明示的にquit()させる。"""
     # Session save must happen BEFORE graph.cleanup() destroys nodes.
     if _session_cb["save"] is not None:
         try:
@@ -11099,8 +11201,8 @@ def cleanup_and_exit():
         print(f"Error during cleanup: {str(e)}")
     finally:
         lme_valkey.stop_fb_reader()
-        # アプリケーションの終了
-        if QtWidgets.QApplication.instance():
+        # アプリケーションの終了（起動時エラーからの直接呼び出し時のみ）
+        if _also_quit_app and QtWidgets.QApplication.instance():
             QtWidgets.QApplication.instance().quit()
 
 def signal_handler(_signum, _frame):
@@ -12680,14 +12782,102 @@ if __name__ == '__main__':
                 print(f"[Motion] Start Over error: {e}")
                 traceback.print_exc()
 
+        # Computed-motion (walking) ticks at up to LOOP_HZ (~100Hz) so Valkey/servo
+        # writes stay precise, but the offscreen VTK->QLabel render (OffscreenRenderer,
+        # "for macOS compatibility") is comparatively expensive per call — it reads
+        # the framebuffer back, reshapes it in numpy, converts to QImage/QPixmap, and
+        # scales it. Calling it synchronously inside PlaybackController._tick() (even
+        # throttled) still occasionally makes a tick take long enough that the control
+        # loop falls behind wall-clock time faster than its catch-up math (clamped to
+        # a max 0.5s step) can compensate — visible as the motion (and any physics
+        # relying on steady control timing, e.g. a walk gait) running slow/unstable.
+        # Worse on machines where this readback+CPU-composite path is slower (seen on
+        # some Ubuntu/Mesa setups; not observed on macOS). Since this is meant to
+        # preview a simulator, the control timing needs to actually be real-time, not
+        # just "fast enough" — a same-thread QTimer for rendering still isn't enough,
+        # since Qt's event loop is single-threaded and the render still blocks
+        # whatever else wants to run during its ~15ms.
+        # Tried moving the render itself to a background thread with the GL context
+        # handed over via MakeCurrent() under a lock — VTK's OpenGL2 backend does not
+        # tolerate that (vtkOpenGLVertexArrayObject errors, corrupted rendering), so
+        # reverted. Moving the *IK computation* to a background thread instead avoids
+        # that: apply_joint_angles() only mutates plain vtkTransform/vtkMatrix4x4
+        # objects (CPU-side data, no GL calls), so it's safe to call off the GUI
+        # thread as long as it can't run at the same time as a render reading that
+        # same data — guarded here by stl_viewer._vtk_lock, with the GL context never
+        # leaving the GUI thread. See PlaybackController._tick()'s _IS_MACOS branches
+        # for the corresponding split (macOS keeps everything inline, unchanged).
         def on_playback_pose(angles):
-            """再生中の姿勢更新"""
+            """再生中の姿勢更新（Poseベース再生、およびmacOSのcomputed motion用）"""
             rm = motion_state['robot_model']
             fk_angles = joint_editor.get_angles_for_3d(angles)
             if rm:
-                rm.apply_joint_angles(fk_angles)
-                stl_viewer.safe_render()
+                with stl_viewer._vtk_lock:
+                    rm.apply_joint_angles(fk_angles)
             lme_valkey.write_angles(fk_angles)
+
+        def _render_during_playback():
+            if playback_ctrl.is_playing:
+                stl_viewer.safe_render()
+
+        playback_render_qtimer = QtCore.QTimer()
+        playback_render_qtimer.timeout.connect(_render_during_playback)
+        playback_render_qtimer.start(50)  # ~20 Hz visual refresh
+
+        if not _IS_MACOS:
+            def _computed_ik_worker():
+                """Runs computed-motion (walking) IK on its own precise loop,
+                independent of the GUI thread, so it isn't slowed down by
+                rendering or any other GUI-thread work. Applies angles directly
+                to the model + Valkey — see PlaybackController._tick()'s
+                _IS_MACOS check, which skips its own inline computed-motion
+                handling on this platform so the two paths don't fight over the
+                same state."""
+                from LegacyMotionEditor_Utils import PAD_REGISTER_VALUES
+                while True:
+                    active = (
+                        playback_ctrl.is_playing
+                        and playback_ctrl._computed_motion_active
+                        and playback_ctrl._ik_executing
+                        and playback_ctrl.motion_runtime is not None
+                        and playback_ctrl._computed_func_names
+                    )
+                    if not active:
+                        time.sleep(0.02)
+                        continue
+
+                    t0 = playback_ctrl.elapsed_timer.elapsed()
+                    project_code = getattr(playback_ctrl.graph, "project_code", "") or ""
+                    try:
+                        loop_hz = float(
+                            (getattr(playback_ctrl.motion_runtime, "_ns", None) or {})
+                            .get("LOOP_HZ", 100) or 100)
+                    except Exception:
+                        loop_hz = 100.0
+
+                    angles = None
+                    for fn in list(playback_ctrl._computed_func_names):
+                        if playback_ctrl.motion_runtime.call_function(
+                                fn, project_code, PAD_REGISTER_VALUES):
+                            angles = playback_ctrl.motion_runtime.get_angles_dict()
+
+                    if angles:
+                        rm = motion_state['robot_model']
+                        with stl_viewer._vtk_lock:
+                            playback_ctrl.next_angles.update(angles)
+                            playback_ctrl.prev_angles.update(angles)
+                            limited = playback_ctrl._apply_joint_speed_limits(
+                                angles, 1.0 / loop_hz)
+                            fk_limited = joint_editor.get_angles_for_3d(limited)
+                            if rm:
+                                rm.apply_joint_angles(fk_limited)
+                        lme_valkey.write_angles(fk_limited)
+
+                    elapsed_ms = playback_ctrl.elapsed_timer.elapsed() - t0
+                    remaining_sec = max(0.0, (1000.0 / loop_hz - elapsed_ms) / 1000.0)
+                    time.sleep(remaining_sec)
+
+            threading.Thread(target=_computed_ik_worker, daemon=True).start()
 
         def on_joint_drag_ended():
             """3Dビューでの関節ドラッグ終了時"""
@@ -14106,5 +14296,5 @@ if __name__ == '__main__':
         print(f"An error occurred: {str(e)}")
         print("Traceback:")
         print(traceback.format_exc())
-        cleanup_and_exit()
+        cleanup_and_exit(_also_quit_app=True)
         sys.exit(1)
