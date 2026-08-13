@@ -535,7 +535,7 @@ def user_logic(r: list, s: list) -&gt; list:
         return _bhv_commander.get_last_output()
     return list(s)</ProjectCode>
   <UserValueSession />
-  <Actions currentIndex="2">
+  <Actions currentIndex="0">
     <Action index="0" title="Boot">
       <MotionFormulas>
         <Formula key="Form1:foo">(Not Available Now)
