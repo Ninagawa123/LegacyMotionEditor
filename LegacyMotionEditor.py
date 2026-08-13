@@ -74,6 +74,7 @@ from LegacyMotionEditor_Utils import (
     LME_PACKET_MARKER_SLOT, LME_PACKET_MARKER_VALUE,
     VALKEY_DEFAULT_HOST, VALKEY_DEFAULT_PORT,
     VALKEY_DEFAULT_WRITE_KEY, VALKEY_DEFAULT_READ_KEY,
+    ensure_valkey_container_running,
     # Color constants
     MINT_GREEN_COLOR, BRANCH_POINT_COLOR, BRANCH_LINE_COLOR,
     PALETTE_WINDOW, PALETTE_WINDOW_TEXT, PALETTE_BASE, PALETTE_ALTERNATE_BASE,
@@ -1131,6 +1132,11 @@ class CustomViewer(NodeViewer):
                         # ライブパイプを非表示に
                         self._LIVE_PIPE.setVisible(False)
                         self._LIVE_PIPE.shift_selected = False
+                        # NodeGraphQt標準の mouseReleaseEvent と同様に、ドラッグ元
+                        # ポートの hovered を明示的に解除する。これをしないと
+                        # NodeItem.mousePressEvent が hovered==True のポートを
+                        # 持つノードへのクリックを無視し続け、パネルが選択不能になる。
+                        start_port.hovered = False
                         self._start_port = None
                         self._detached_port = None
 
@@ -1168,6 +1174,9 @@ class CustomViewer(NodeViewer):
                 # ライブパイプをリセット
                 self._LIVE_PIPE.setVisible(False)
                 self._LIVE_PIPE.shift_selected = False
+                # 上と同様、ドラッグ元ポートの hovered を解除してから外す。
+                if self._start_port is not None:
+                    self._start_port.hovered = False
                 self._start_port = None
                 self._detached_port = None
                 self.LMB_state = False
@@ -7277,7 +7286,12 @@ class JointEditorPanel(QtWidgets.QWidget):
         self.bulk_easing_combo = QtWidgets.QComboBox()
         self.bulk_easing_combo.addItems(EASING_OPTIONS)
         self.bulk_easing_combo.setCurrentIndex(0)
-        self.bulk_easing_combo.setStyleSheet("color: black;")
+        # "color: black;" alone only fixes the closed-box text; on Windows the
+        # popup list (QAbstractItemView) ignores the palette and needs its own
+        # rule or its item text renders white-on-white when the dropdown opens.
+        self.bulk_easing_combo.setStyleSheet(
+            "QComboBox { color: black; } QComboBox QAbstractItemView { color: black; }"
+        )
         self.bulk_easing_combo.currentIndexChanged.connect(self._on_bulk_easing_changed)
         pose_meta_layout.addWidget(self.bulk_easing_combo)
 
@@ -7338,6 +7352,7 @@ class JointEditorPanel(QtWidgets.QWidget):
         options_layout.addWidget(step_unit_label)
 
         self.group_preset_combo = QtWidgets.QComboBox()
+        self.group_preset_combo.setStyleSheet(_MAIN_WINDOW_COMBO_TEXT_STYLE)
         self.group_preset_combo.currentIndexChanged.connect(self._on_group_preset_changed)
         options_layout.addWidget(self.group_preset_combo)
         self.group_master_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
@@ -7958,14 +7973,37 @@ class JointEditorPanel(QtWidgets.QWidget):
             spin.setDecimals(1)
             spin.setSingleStep(1.0)
             spin.setValue(0.0)
-            spin.setFixedWidth(62)
+            # 数字2.5文字分だけ幅を広げ、桁数の多い値（例: -120.0）でも
+            # 上下ボタンに文字が隠れないようにする。
+            _digit_w = QtGui.QFontMetrics(spin.font()).horizontalAdvance("0")
+            spin.setFixedWidth(62 + round(_digit_w * 2.5))
             row_layout.addWidget(spin)
 
             easing_combo = QtWidgets.QComboBox()
             easing_combo.addItems(EASING_OPTIONS)
             easing_combo.setCurrentIndex(0)
             easing_combo.setFixedWidth(100)
-            easing_combo.setStyleSheet("QComboBox QAbstractItemView { color: black; }")
+            # "QComboBox { color: black; }" fixes the closed-box display text
+            # (without it, the current-selection text renders white-on-white
+            # on Windows — confirmed visually, not just a theoretical risk).
+            _popup_style = (
+                "QComboBox { color: black; } "
+                "QComboBox QAbstractItemView { color: black; }"
+            )
+            if sys.platform == "win32":
+                # Windows: in the open popup, "color: black" alone only
+                # reliably paints the hovered/selected row (that path goes
+                # through the style's highlight-drawing code, which honours
+                # it); resting rows fall back to native rendering where the
+                # text stays white-on-white. Explicitly styling the
+                # background too makes Qt fully own the item painting so the
+                # text colour actually applies to every row, not just the
+                # hovered one.
+                _popup_style = (
+                    "QComboBox { color: black; } "
+                    "QComboBox QAbstractItemView { color: black; background: white; }"
+                )
+            easing_combo.setStyleSheet(_popup_style)
             row_layout.addWidget(easing_combo)
 
             self.sliders[jname] = slider
@@ -8455,8 +8493,12 @@ class PlaybackController(QtCore.QObject):
 
         self.play(start_node, graph, robot_model)
 
-    def play(self, start_node, graph, robot_model):
+    def play(self, start_node, graph, robot_model, action_only=False):
         """再生開始"""
+        # Single source of truth for _action_only_mode: every play() call (直接呼び出し
+        # も play_action_only 経由も) explicitly states whether it's action-only, so a
+        # stale True from a previous ▶︎. run can never leak into a later ▶︎_ run.
+        self._action_only_mode = action_only
         self.graph = graph
         self.robot_model = robot_model
         self.segments = []
@@ -8546,8 +8588,7 @@ class PlaybackController(QtCore.QObject):
 
     def play_action_only(self, start_node, graph, robot_model):
         """Action-only mode: play from start_node, stop at any JumpNode."""
-        self._action_only_mode = True
-        self.play(start_node, graph, robot_model)
+        self.play(start_node, graph, robot_model, action_only=True)
 
     def play_single_pose(self, target_node, graph, robot_model):
         """Long-press: interpolate from current robot position to target_node's pose."""
@@ -8628,6 +8669,13 @@ class PlaybackController(QtCore.QObject):
             path.append(next_node)
             visited.add(id(next_node))
             current = next_node
+
+            # Action-only mode (▶︎.): stop once a JumpNode is reached instead of
+            # following whatever is wired to its output (which may lead further
+            # through the graph, masking the intended stop point).
+            if self._action_only_mode and isinstance(current, (JumpNode, VirtualJumpNode)):
+                print(f"[Playback] Stopping at JumpNode (action-only mode): {current.name()}")
+                break
         print(f"[Playback] Built path with {len(path)} nodes: {[n.name() for n in path]}")
         return path
 
@@ -9212,6 +9260,16 @@ class PlaybackController(QtCore.QObject):
                     return
                 # 最後のセグメントの次のノードから更に辿れるか確認
                 _, last_next = self.segments[self.current_segment_idx]
+
+                # Action-only mode (▶︎.): stop once we've arrived at a JumpNode,
+                # instead of resolving/following its jump target (which may cross
+                # into another Action). Covers JumpNodes reached via dynamic
+                # BranchingNode evaluation, in addition to the _build_path stop.
+                if self._action_only_mode and isinstance(last_next, (JumpNode, VirtualJumpNode)):
+                    print(f"[Playback] Stopping at JumpNode (action-only mode): {last_next.name()}")
+                    self.stop()
+                    return
+
                 further = self._get_next_node(last_next)
                 # Check for both real and virtual node types (including BaseLinkNode for cross-action jumps)
                 is_valid_further = further and isinstance(
@@ -9254,6 +9312,7 @@ class LMEValkeyClient:
         self._fb_callback = None  # callable(status_str) to update UI
         self._last_mrd: list | None = None  # 前回送信パケット（部分更新マージ用）
         self._lme_seq: int = 0  # Valkey slot 88: recv デバッグ用シーケンス
+        self._autostart_running = False  # Windows: Docker auto-start in progress
 
     # ── public API ──────────────────────────────────────────────────────────
 
@@ -9398,6 +9457,28 @@ class LMEValkeyClient:
             self._fb_status = status
             self._notify_fb(status)
             print(f"[LMEValkey] {status}")
+            self._maybe_autostart_docker()
+
+    def _maybe_autostart_docker(self) -> None:
+        """Windows only: best-effort bring up Docker Desktop / the
+        physicalon-valkey container in the background, then retry connecting.
+        No-op on macOS/Ubuntu, where Valkey is expected to already be running.
+        """
+        if os.name != "nt" or self._autostart_running:
+            return
+        self._autostart_running = True
+        host, port = self._host, self._port
+
+        def _run():
+            try:
+                if ensure_valkey_container_running(host, port):
+                    # Only reconnect if config hasn't changed/disabled meanwhile.
+                    if self._enabled and self._host == host and self._port == port:
+                        self._reconnect()
+            finally:
+                self._autostart_running = False
+
+        threading.Thread(target=_run, daemon=True).start()
 
     def _close_clients(self) -> None:
         for c in (self._write_client, self._read_client):
@@ -13809,6 +13890,7 @@ if __name__ == '__main__':
                 self._boot_combo = QtWidgets.QComboBox()
                 self._base_combo = QtWidgets.QComboBox()
                 for combo in (self._boot_combo, self._base_combo):
+                    combo.setStyleSheet(_MAIN_WINDOW_COMBO_TEXT_STYLE)
                     combo.addItem("(none)", -1)
                     for i, t in enumerate(titles):
                         combo.addItem(t, i)

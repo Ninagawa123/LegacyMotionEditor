@@ -24,6 +24,7 @@ import os
 import struct
 import subprocess
 import sys
+import threading
 import time
 import traceback
 import xml.etree.ElementTree as ET
@@ -46,8 +47,10 @@ from LegacyMotionEditor_Utils import (  # noqa: E402
     VALKEY_DEFAULT_PORT,
     VALKEY_DEFAULT_READ_KEY,
     VALKEY_DEFAULT_WRITE_KEY,
+    ensure_valkey_container_running,
     path_for_project_save,
     resolve_project_path,
+    valkey_available,
 )
 
 WINDOW_TITLE = "LegacyMotionEditor MuJoCoStudio"
@@ -350,23 +353,6 @@ def apply_cli_overrides(cfg: dict, args) -> dict:
     return cfg
 
 
-def valkey_available(host: str, port: int, timeout_s: float = 0.35) -> bool:
-    """Return True if a Valkey/Redis server answers PING."""
-    try:
-        import valkey
-        client = valkey.Valkey(
-            host=str(host), port=int(port),
-            socket_connect_timeout=timeout_s, socket_timeout=timeout_s)
-        client.ping()
-        try:
-            client.close()
-        except Exception:
-            pass
-        return True
-    except Exception:
-        return False
-
-
 def load_settings() -> dict:
     cfg = default_settings()
     if not os.path.isfile(SETTINGS_PATH):
@@ -651,6 +637,9 @@ class StudioApp:
         self.meta_arr = None
         self.joint_map: list = []
         self.valkey_running = False
+        self._valkey_autostart_done = threading.Event()
+        self._valkey_autostart_ok = False
+        self._valkey_autostart_handled = False
 
         self._status = ""
         self._font_sm = None
@@ -843,7 +832,22 @@ class StudioApp:
                 _r.destroy()
             except Exception:
                 sw = 1920
-        top = 25 if sys.platform == "darwin" else 0
+        if sys.platform == "darwin":
+            top = 25  # room for the macOS menu bar
+        elif os.name == "nt":
+            # On Windows, SDL_VIDEO_WINDOW_POS places the outer window (title
+            # bar included) at this y-coordinate. y=0 pushes the title bar
+            # above the visible screen, leaving the window undecorated and
+            # unmovable/unresizable. Offset by the actual caption+border
+            # height so the title bar stays on-screen.
+            try:
+                import ctypes
+                user32 = ctypes.windll.user32
+                top = user32.GetSystemMetrics(4) + user32.GetSystemMetrics(33) * 2  # SM_CYCAPTION, SM_CYSIZEFRAME
+            except Exception:
+                top = 32
+        else:
+            top = 0
         os.environ["SDL_VIDEO_WINDOW_POS"] = f"{max(0, sw - self.win_w)},{top}"
         os.environ.pop("SDL_VIDEO_CENTERED", None)
         screen = pygame.display.set_mode(
@@ -853,10 +857,25 @@ class StudioApp:
 
         self.load_model()
         vk = self.cfg.get("valkey") or {}
-        if valkey_available(vk.get("host", VALKEY_DEFAULT_HOST),
-                            int(vk.get("port", VALKEY_DEFAULT_PORT) or VALKEY_DEFAULT_PORT)):
+        vk_host = vk.get("host", VALKEY_DEFAULT_HOST)
+        vk_port = int(vk.get("port", VALKEY_DEFAULT_PORT) or VALKEY_DEFAULT_PORT)
+        if valkey_available(vk_host, vk_port):
             self.start_valkey()
             logger.info("Valkey available — started on launch")
+        elif os.name == "nt":
+            # Windows only: try to auto-start Docker Desktop / the
+            # physicalon-valkey container off the main thread so the window
+            # keeps rendering while we wait (can take up to a minute). On
+            # Mac/Ubuntu, Valkey is expected to already be running, so this
+            # matches the original (no auto-start) behavior there.
+            logger.warning("Valkey server not reachable — attempting auto-start (Windows)")
+
+            def _autostart():
+                ok = ensure_valkey_container_running(vk_host, vk_port)
+                self._valkey_autostart_ok = ok
+                self._valkey_autostart_done.set()
+
+            threading.Thread(target=_autostart, daemon=True).start()
         else:
             logger.warning("Valkey server not reachable")
 
@@ -899,6 +918,17 @@ class StudioApp:
                     elif event.type == pygame.MOUSEWHEEL:
                         self.cam.distance = max(
                             0.2, self.cam.distance * (0.9 if event.y > 0 else 1.1))
+
+                # Pick up the result of the background Docker/Valkey auto-start
+                if (self._valkey_autostart_done.is_set()
+                        and not self._valkey_autostart_handled):
+                    self._valkey_autostart_handled = True
+                    if self._valkey_autostart_ok and not self.valkey_running:
+                        self.start_valkey()
+                        logger.info("Valkey available — started after Docker auto-start")
+                    elif not self._valkey_autostart_ok:
+                        self._status = "Valkey OFF (auto-start failed)"
+                        logger.warning("Valkey auto-start via Docker failed")
 
                 # Physics
                 if self.model is not None and self.data is not None:

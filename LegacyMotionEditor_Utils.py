@@ -21,7 +21,9 @@ import copy
 import re
 import shutil
 import subprocess
+import tempfile
 import threading
+import time
 import numpy as np
 import vtk
 
@@ -533,6 +535,110 @@ VALKEY_DEFAULT_HOST = "127.0.0.1"
 VALKEY_DEFAULT_PORT = 6379
 VALKEY_DEFAULT_WRITE_KEY = "merikey_psclon_sub"
 VALKEY_DEFAULT_READ_KEY  = "merikey_psclon_pub"
+
+# =============================================================================
+# Valkey availability / Windows Docker auto-start
+# =============================================================================
+# On the dev machines, Valkey runs in a Docker container named
+# "physicalon-valkey" (see docker-compose / manual `docker run` setup). On
+# macOS/Ubuntu that container (or a native valkey-server) is expected to
+# already be running, so no auto-start is attempted there. On Windows, Docker
+# Desktop is often not started yet when LME launches, so we best-effort bring
+# it up automatically instead of just failing to connect.
+
+DOCKER_VALKEY_CONTAINER = "physicalon-valkey"
+DOCKER_AUTOSTART_TIMEOUT_S = 60.0
+_CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+
+
+def valkey_available(host: str, port: int, timeout_s: float = 0.35) -> bool:
+    """Return True if a Valkey/Redis server answers PING."""
+    try:
+        import valkey
+        client = valkey.Valkey(
+            host=str(host), port=int(port),
+            socket_connect_timeout=timeout_s, socket_timeout=timeout_s)
+        client.ping()
+        try:
+            client.close()
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+def _docker_daemon_ready(timeout_s: float = 2.0) -> bool:
+    """Return True if `docker info` succeeds (daemon is up and reachable)."""
+    try:
+        r = subprocess.run(
+            ["docker", "info"], capture_output=True, timeout=timeout_s,
+            creationflags=_CREATE_NO_WINDOW)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def _launch_docker_desktop() -> bool:
+    """Best-effort launch of Docker Desktop so its daemon comes up. Windows only."""
+    candidates = [
+        os.path.expandvars(r"%ProgramFiles%\Docker\Docker\Docker Desktop.exe"),
+        os.path.expandvars(r"%ProgramFiles(x86)%\Docker\Docker\Docker Desktop.exe"),
+        os.path.expandvars(r"%LocalAppData%\Docker\Docker Desktop.exe"),
+    ]
+    for exe in candidates:
+        if os.path.isfile(exe):
+            try:
+                subprocess.Popen([exe], creationflags=subprocess.DETACHED_PROCESS)
+                _log.info("Launched Docker Desktop: %s", exe)
+                return True
+            except Exception as e:
+                _log.warning("Failed to launch Docker Desktop (%s): %s", exe, e)
+                return False
+    _log.warning("Docker Desktop executable not found in default locations")
+    return False
+
+
+def ensure_valkey_container_running(host: str, port: int) -> bool:
+    """Best-effort auto-start of the physicalon-valkey Docker container (Windows).
+
+    If Valkey isn't already reachable, brings up Docker Desktop (if needed) and
+    starts the `physicalon-valkey` container, then waits for Valkey to answer
+    PING. Meant to run off the main thread — it blocks up to
+    DOCKER_AUTOSTART_TIMEOUT_S seconds. Returns True once Valkey is reachable.
+    No-op (returns False) on macOS/Ubuntu, where Valkey is expected to already
+    be running.
+    """
+    if valkey_available(host, port):
+        return True
+    if os.name != "nt":
+        return False
+
+    deadline = time.monotonic() + DOCKER_AUTOSTART_TIMEOUT_S
+
+    if not _docker_daemon_ready():
+        _log.info("Docker daemon not running — launching Docker Desktop")
+        _launch_docker_desktop()
+        while time.monotonic() < deadline and not _docker_daemon_ready():
+            time.sleep(2.0)
+
+    if _docker_daemon_ready():
+        try:
+            subprocess.run(
+                ["docker", "start", DOCKER_VALKEY_CONTAINER],
+                capture_output=True, timeout=15, creationflags=_CREATE_NO_WINDOW)
+            _log.info("docker start %s issued", DOCKER_VALKEY_CONTAINER)
+        except Exception as e:
+            _log.warning("docker start %s failed: %s", DOCKER_VALKEY_CONTAINER, e)
+    else:
+        _log.warning("Docker daemon did not become ready within %.0fs",
+                      DOCKER_AUTOSTART_TIMEOUT_S)
+
+    while time.monotonic() < deadline:
+        if valkey_available(host, port):
+            return True
+        time.sleep(1.0)
+    return valkey_available(host, port)
 
 # LME URDF joint name → (meridim_index, multiplier)
 # Keys are URDF joint names used by LegacyMotionEditor (roid1.urdf).
@@ -1273,6 +1379,59 @@ def quat_to_rpy_xyzw(quat):
     return [roll, pitch, yaw]
 
 
+def _win_spin_arrow_icon_paths():
+    """Render small up/down triangle PNGs to a cache dir and return their paths.
+
+    Qt's QSS `image: url(data:...)` did not reliably load in testing on this
+    Qt/PySide build, so we render real files once and reference them by path
+    instead (a plain file path is the well-supported QSS pattern).
+    """
+    cache_dir = os.path.join(tempfile.gettempdir(), "lme_spin_icons")
+    os.makedirs(cache_dir, exist_ok=True)
+    up_path = os.path.join(cache_dir, "spin_up.png")
+    down_path = os.path.join(cache_dir, "spin_down.png")
+    if not (os.path.isfile(up_path) and os.path.isfile(down_path)):
+        for path, points in (
+            (up_path, [(1, 6), (7, 6), (4, 1)]),
+            (down_path, [(1, 1), (7, 1), (4, 6)]),
+        ):
+            pixmap = QtGui.QPixmap(8, 8)
+            pixmap.fill(QtCore.Qt.transparent)
+            painter = QtGui.QPainter(pixmap)
+            painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.setBrush(QtGui.QColor(30, 30, 30))
+            painter.drawPolygon(QtGui.QPolygon([QtCore.QPoint(x, y) for x, y in points]))
+            painter.end()
+            pixmap.save(path, "PNG")
+    return up_path.replace("\\", "/"), down_path.replace("\\", "/")
+
+
+class _WinSpinBoxStyler(QtCore.QObject):
+    """Windows-only: assigns the Fusion QStyle to every QAbstractSpinBox.
+
+    The native "windowsvista" style ignores QSS subcontrol customization
+    (::up-button/::down-button/::up-arrow/::down-arrow) for spin boxes
+    entirely, so the narrow/visible-arrow QSS rules in apply_dark_theme()
+    have no effect unless the widget itself uses Fusion (which fully honors
+    QSS subcontrol styling). Rather than touching every QSpinBox/
+    QDoubleSpinBox construction site in the app, this filter catches each
+    spin box's first Polish event and switches just that widget to Fusion —
+    every other widget type keeps the native Windows look untouched.
+    """
+
+    def __init__(self, parent=None):
+        super(_WinSpinBoxStyler, self).__init__(parent)
+        self._fusion_style = QtWidgets.QStyleFactory.create("Fusion")
+
+    def eventFilter(self, obj, event):
+        if (event.type() == QtCore.QEvent.Polish
+                and isinstance(obj, QtWidgets.QAbstractSpinBox)
+                and self._fusion_style is not None):
+            obj.setStyle(self._fusion_style)
+        return False
+
+
 def apply_dark_theme(app):
     """Apply dark theme palette to the application."""
     QPalette = QtGui.QPalette
@@ -1294,9 +1453,63 @@ def apply_dark_theme(app):
     # ネイティブスタイル（特にWindows）はQPalette.ButtonTextを無視してボタン背景を
     # 明るいまま描画することがあり、白文字が読めなくなるためQSSで明示的に黒文字に固定する。
     # 個別にsetStyleSheet()済みのボタンはウィジェット側の指定が優先されるため影響しない。
-    app.setStyleSheet(
-        (app.styleSheet() or "") + "\nQPushButton, QToolButton { color: black; }"
-    )
+    extra_qss = "\nQPushButton, QToolButton { color: black; }"
+    if sys.platform == "win32":
+        # Windows native style (windowsvista) draws QAbstractSpinBox's up/down
+        # buttons via the OS visual-styles theme but the tiny arrow glyph via
+        # QPalette.ButtonText — which this app sets to white for the dark
+        # QPalette.Button above. The button chrome itself stays native light
+        # grey (same ignoring-the-palette behavior as QPushButton, see note
+        # above), so a white arrow on a light button is invisible. The native
+        # theme also sizes the button subcontrols generously, which eats into
+        # the value text at the small fixed widths used for joint spin boxes
+        # (e.g. digits get clipped). macOS/Linux styles don't have either
+        # problem, so this is Windows-only: Qt-draw the buttons ourselves with
+        # a narrow fixed width and an explicit dark arrow colour, still
+        # stacked top/bottom like the native look on other platforms.
+        styler = _WinSpinBoxStyler(app)
+        app.installEventFilter(styler)
+        app._lme_win_spinbox_styler = styler  # keep alive (installEventFilter doesn't own it)
+
+        up_icon, down_icon = _win_spin_arrow_icon_paths()
+        extra_qss += f"""
+QAbstractSpinBox {{
+    padding-right: 14px;
+}}
+QAbstractSpinBox::up-button, QAbstractSpinBox::down-button {{
+    subcontrol-origin: border;
+    width: 14px;
+    background-color: #e0e0e0;
+    border-left: 1px solid #a0a0a0;
+}}
+QAbstractSpinBox::up-button {{
+    subcontrol-position: top right;
+    height: 12px;
+    border-top-right-radius: 2px;
+}}
+QAbstractSpinBox::down-button {{
+    subcontrol-position: bottom right;
+    height: 12px;
+    border-bottom-right-radius: 2px;
+}}
+QAbstractSpinBox::up-button:hover, QAbstractSpinBox::down-button:hover {{
+    background-color: #cfcfcf;
+}}
+QAbstractSpinBox::up-button:pressed, QAbstractSpinBox::down-button:pressed {{
+    background-color: #b8b8b8;
+}}
+QAbstractSpinBox::up-arrow {{
+    image: url({up_icon});
+    width: 7px;
+    height: 7px;
+}}
+QAbstractSpinBox::down-arrow {{
+    image: url({down_icon});
+    width: 7px;
+    height: 7px;
+}}
+"""
+    app.setStyleSheet((app.styleSheet() or "") + extra_qss)
 
 
 # =============================================================================
@@ -1785,9 +1998,13 @@ def build_virtual_graph_from_action_data(action_data):
 class OffscreenRenderer:
     """Offscreen VTK rendering to QLabel for macOS compatibility."""
 
-    def __init__(self, render_window, renderer):
+    def __init__(self, render_window, renderer, render_lock=None):
         self.render_window = render_window
         self.renderer = renderer
+        # Guards the actual VTK render+readback call below against the actor/
+        # mesh data it reads being mutated concurrently (e.g. by a background
+        # IK worker thread). Optional: pass None to skip locking entirely.
+        self._render_lock = render_lock
         self._is_rendering = False
 
     def render_to_qpixmap(self):
@@ -1796,6 +2013,15 @@ class OffscreenRenderer:
             return None
 
         self._is_rendering = True
+        try:
+            if self._render_lock is not None:
+                with self._render_lock:
+                    return self._do_render_to_qpixmap()
+            return self._do_render_to_qpixmap()
+        finally:
+            self._is_rendering = False
+
+    def _do_render_to_qpixmap(self):
         try:
             self.render_window.Render()
 
@@ -1825,8 +2051,6 @@ class OffscreenRenderer:
         except Exception as e:
             print(f"[OffscreenRenderer] Error: {e}")
             return None
-        finally:
-            self._is_rendering = False
 
     def update_display(self, qlabel_widget):
         """Render and update QLabel display."""
@@ -9268,10 +9492,17 @@ def export_cartridge(
         raise ValueError("MERIDIM_JOINT_MAP is empty — JOINT_TO_MERIDIM has no canonical joints")
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # HEADER_TEMPLATE embeds these directly inside the generated file's own
+    # triple-quoted docstring, so any backslash they contain is parsed as a
+    # Python escape sequence when the cartridge is (re)loaded. Windows paths
+    # (e.g. "C:\Users\...") commonly contain "\U..." which Python reads as a
+    # (truncated) \UXXXXXXXX unicode escape and fails to parse — macOS/Linux
+    # paths use forward slashes and never hit this. Normalise to forward
+    # slashes so the generated file stays valid Python on every platform.
     header = HEADER_TEMPLATE.format(
-        robot_name=robot_name,
+        robot_name=str(robot_name).replace("\\", "/"),
         timestamp=timestamp,
-        source_project=source_project or "(unsaved)",
+        source_project=(source_project or "(unsaved)").replace("\\", "/"),
         loop_hz=loop_hz,
     )
 
