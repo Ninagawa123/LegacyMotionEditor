@@ -192,7 +192,7 @@ WALK_PARAMS = {
     'landing_period_ratio': 0.1,
     'weight_shift_duration_ratio': 0.25,
     'end_of_simulation': 8.0,
-    'cycle_duration': 1.1,
+    'cycle_duration': 1.3,
     'swing_ratio': 0.4,
     'foot_lift': 0.02,
     'hip_swing': 0.015,
