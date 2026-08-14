@@ -388,6 +388,7 @@ class Morphology(str, Enum):
     HUMANOID = "humanoid"
     QUADRUPED = "quadruped"
     AVIAN = "avian"
+    ARTHROPOD = "arthropod"
     GENERIC_VERTEBRATE = "generic_vertebrate"
     GENERIC_ROBOT = "generic_robot"
 
@@ -478,6 +479,8 @@ _MORPHOLOGY_ALIASES = {
     "humanoid": Morphology.HUMANOID,
     "quadruped": Morphology.QUADRUPED,
     "avian": Morphology.AVIAN,
+    "arthropod": Morphology.ARTHROPOD,
+    "myriapod": Morphology.ARTHROPOD,
     "generic_vertebrate": Morphology.GENERIC_VERTEBRATE,
     "generic vertebrate": Morphology.GENERIC_VERTEBRATE,
     "generic_robot": Morphology.GENERIC_ROBOT,

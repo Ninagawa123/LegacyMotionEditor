@@ -4964,6 +4964,1030 @@
       "functional_aliases": [],
       "singleton_chain_rule": null,
       "notes": "Provisional DOF registered from link_tree via_joint edge (topology-evidenced)."
+    },
+    {
+      "target": "l_leg_01_xr",
+      "entity_id": "dof:l:l_leg_01_xr",
+      "canonical_id": "l_leg_01_xr",
+      "formal_joint_name": "l_leg_01_xr_joint",
+      "expanded_joint_name": "l_leg_01_xroll_joint",
+      "ros_joint_name": "l_leg_01_roll_joint",
+      "axis_pair": "xroll",
+      "axis_vector_reference_pose": "[1,0,0]",
+      "semantic_motion": "leg 01 abduction/adduction",
+      "motion_class": "abduction_adduction",
+      "positive_semantic_motion": "abduction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "left",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_01",
+      "chain_name": "leg_01",
+      "chain_index": 1,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "l_leg_01_roll",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "l_leg_01_yp",
+      "entity_id": "dof:l:l_leg_01_yp",
+      "canonical_id": "l_leg_01_yp",
+      "formal_joint_name": "l_leg_01_yp_joint",
+      "expanded_joint_name": "l_leg_01_ypitch_joint",
+      "ros_joint_name": "l_leg_01_pitch_joint",
+      "axis_pair": "ypitch",
+      "axis_vector_reference_pose": "[0,1,0]",
+      "semantic_motion": "leg 01 protraction/retraction",
+      "motion_class": "flexion_extension",
+      "positive_semantic_motion": "protraction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "left",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_01",
+      "chain_name": "leg_01",
+      "chain_index": 1,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "l_leg_01_pitch",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "l_leg_02_xr",
+      "entity_id": "dof:l:l_leg_02_xr",
+      "canonical_id": "l_leg_02_xr",
+      "formal_joint_name": "l_leg_02_xr_joint",
+      "expanded_joint_name": "l_leg_02_xroll_joint",
+      "ros_joint_name": "l_leg_02_roll_joint",
+      "axis_pair": "xroll",
+      "axis_vector_reference_pose": "[1,0,0]",
+      "semantic_motion": "leg 02 abduction/adduction",
+      "motion_class": "abduction_adduction",
+      "positive_semantic_motion": "abduction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "left",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_02",
+      "chain_name": "leg_02",
+      "chain_index": 2,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "l_leg_02_roll",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "l_leg_02_yp",
+      "entity_id": "dof:l:l_leg_02_yp",
+      "canonical_id": "l_leg_02_yp",
+      "formal_joint_name": "l_leg_02_yp_joint",
+      "expanded_joint_name": "l_leg_02_ypitch_joint",
+      "ros_joint_name": "l_leg_02_pitch_joint",
+      "axis_pair": "ypitch",
+      "axis_vector_reference_pose": "[0,1,0]",
+      "semantic_motion": "leg 02 protraction/retraction",
+      "motion_class": "flexion_extension",
+      "positive_semantic_motion": "protraction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "left",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_02",
+      "chain_name": "leg_02",
+      "chain_index": 2,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "l_leg_02_pitch",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "l_leg_03_xr",
+      "entity_id": "dof:l:l_leg_03_xr",
+      "canonical_id": "l_leg_03_xr",
+      "formal_joint_name": "l_leg_03_xr_joint",
+      "expanded_joint_name": "l_leg_03_xroll_joint",
+      "ros_joint_name": "l_leg_03_roll_joint",
+      "axis_pair": "xroll",
+      "axis_vector_reference_pose": "[1,0,0]",
+      "semantic_motion": "leg 03 abduction/adduction",
+      "motion_class": "abduction_adduction",
+      "positive_semantic_motion": "abduction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "left",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_03",
+      "chain_name": "leg_03",
+      "chain_index": 3,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "l_leg_03_roll",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "l_leg_03_yp",
+      "entity_id": "dof:l:l_leg_03_yp",
+      "canonical_id": "l_leg_03_yp",
+      "formal_joint_name": "l_leg_03_yp_joint",
+      "expanded_joint_name": "l_leg_03_ypitch_joint",
+      "ros_joint_name": "l_leg_03_pitch_joint",
+      "axis_pair": "ypitch",
+      "axis_vector_reference_pose": "[0,1,0]",
+      "semantic_motion": "leg 03 protraction/retraction",
+      "motion_class": "flexion_extension",
+      "positive_semantic_motion": "protraction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "left",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_03",
+      "chain_name": "leg_03",
+      "chain_index": 3,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "l_leg_03_pitch",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "l_leg_04_xr",
+      "entity_id": "dof:l:l_leg_04_xr",
+      "canonical_id": "l_leg_04_xr",
+      "formal_joint_name": "l_leg_04_xr_joint",
+      "expanded_joint_name": "l_leg_04_xroll_joint",
+      "ros_joint_name": "l_leg_04_roll_joint",
+      "axis_pair": "xroll",
+      "axis_vector_reference_pose": "[1,0,0]",
+      "semantic_motion": "leg 04 abduction/adduction",
+      "motion_class": "abduction_adduction",
+      "positive_semantic_motion": "abduction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "left",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_04",
+      "chain_name": "leg_04",
+      "chain_index": 4,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "l_leg_04_roll",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "l_leg_04_yp",
+      "entity_id": "dof:l:l_leg_04_yp",
+      "canonical_id": "l_leg_04_yp",
+      "formal_joint_name": "l_leg_04_yp_joint",
+      "expanded_joint_name": "l_leg_04_ypitch_joint",
+      "ros_joint_name": "l_leg_04_pitch_joint",
+      "axis_pair": "ypitch",
+      "axis_vector_reference_pose": "[0,1,0]",
+      "semantic_motion": "leg 04 protraction/retraction",
+      "motion_class": "flexion_extension",
+      "positive_semantic_motion": "protraction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "left",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_04",
+      "chain_name": "leg_04",
+      "chain_index": 4,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "l_leg_04_pitch",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "l_leg_05_xr",
+      "entity_id": "dof:l:l_leg_05_xr",
+      "canonical_id": "l_leg_05_xr",
+      "formal_joint_name": "l_leg_05_xr_joint",
+      "expanded_joint_name": "l_leg_05_xroll_joint",
+      "ros_joint_name": "l_leg_05_roll_joint",
+      "axis_pair": "xroll",
+      "axis_vector_reference_pose": "[1,0,0]",
+      "semantic_motion": "leg 05 abduction/adduction",
+      "motion_class": "abduction_adduction",
+      "positive_semantic_motion": "abduction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "left",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_05",
+      "chain_name": "leg_05",
+      "chain_index": 5,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "l_leg_05_roll",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "l_leg_05_yp",
+      "entity_id": "dof:l:l_leg_05_yp",
+      "canonical_id": "l_leg_05_yp",
+      "formal_joint_name": "l_leg_05_yp_joint",
+      "expanded_joint_name": "l_leg_05_ypitch_joint",
+      "ros_joint_name": "l_leg_05_pitch_joint",
+      "axis_pair": "ypitch",
+      "axis_vector_reference_pose": "[0,1,0]",
+      "semantic_motion": "leg 05 protraction/retraction",
+      "motion_class": "flexion_extension",
+      "positive_semantic_motion": "protraction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "left",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_05",
+      "chain_name": "leg_05",
+      "chain_index": 5,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "l_leg_05_pitch",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "l_leg_06_xr",
+      "entity_id": "dof:l:l_leg_06_xr",
+      "canonical_id": "l_leg_06_xr",
+      "formal_joint_name": "l_leg_06_xr_joint",
+      "expanded_joint_name": "l_leg_06_xroll_joint",
+      "ros_joint_name": "l_leg_06_roll_joint",
+      "axis_pair": "xroll",
+      "axis_vector_reference_pose": "[1,0,0]",
+      "semantic_motion": "leg 06 abduction/adduction",
+      "motion_class": "abduction_adduction",
+      "positive_semantic_motion": "abduction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "left",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_06",
+      "chain_name": "leg_06",
+      "chain_index": 6,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "l_leg_06_roll",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "l_leg_06_yp",
+      "entity_id": "dof:l:l_leg_06_yp",
+      "canonical_id": "l_leg_06_yp",
+      "formal_joint_name": "l_leg_06_yp_joint",
+      "expanded_joint_name": "l_leg_06_ypitch_joint",
+      "ros_joint_name": "l_leg_06_pitch_joint",
+      "axis_pair": "ypitch",
+      "axis_vector_reference_pose": "[0,1,0]",
+      "semantic_motion": "leg 06 protraction/retraction",
+      "motion_class": "flexion_extension",
+      "positive_semantic_motion": "protraction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "left",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_06",
+      "chain_name": "leg_06",
+      "chain_index": 6,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "l_leg_06_pitch",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "l_leg_07_xr",
+      "entity_id": "dof:l:l_leg_07_xr",
+      "canonical_id": "l_leg_07_xr",
+      "formal_joint_name": "l_leg_07_xr_joint",
+      "expanded_joint_name": "l_leg_07_xroll_joint",
+      "ros_joint_name": "l_leg_07_roll_joint",
+      "axis_pair": "xroll",
+      "axis_vector_reference_pose": "[1,0,0]",
+      "semantic_motion": "leg 07 abduction/adduction",
+      "motion_class": "abduction_adduction",
+      "positive_semantic_motion": "abduction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "left",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_07",
+      "chain_name": "leg_07",
+      "chain_index": 7,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "l_leg_07_roll",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "l_leg_07_yp",
+      "entity_id": "dof:l:l_leg_07_yp",
+      "canonical_id": "l_leg_07_yp",
+      "formal_joint_name": "l_leg_07_yp_joint",
+      "expanded_joint_name": "l_leg_07_ypitch_joint",
+      "ros_joint_name": "l_leg_07_pitch_joint",
+      "axis_pair": "ypitch",
+      "axis_vector_reference_pose": "[0,1,0]",
+      "semantic_motion": "leg 07 protraction/retraction",
+      "motion_class": "flexion_extension",
+      "positive_semantic_motion": "protraction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "left",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_07",
+      "chain_name": "leg_07",
+      "chain_index": 7,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "l_leg_07_pitch",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "l_leg_08_xr",
+      "entity_id": "dof:l:l_leg_08_xr",
+      "canonical_id": "l_leg_08_xr",
+      "formal_joint_name": "l_leg_08_xr_joint",
+      "expanded_joint_name": "l_leg_08_xroll_joint",
+      "ros_joint_name": "l_leg_08_roll_joint",
+      "axis_pair": "xroll",
+      "axis_vector_reference_pose": "[1,0,0]",
+      "semantic_motion": "leg 08 abduction/adduction",
+      "motion_class": "abduction_adduction",
+      "positive_semantic_motion": "abduction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "left",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_08",
+      "chain_name": "leg_08",
+      "chain_index": 8,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "l_leg_08_roll",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "l_leg_08_yp",
+      "entity_id": "dof:l:l_leg_08_yp",
+      "canonical_id": "l_leg_08_yp",
+      "formal_joint_name": "l_leg_08_yp_joint",
+      "expanded_joint_name": "l_leg_08_ypitch_joint",
+      "ros_joint_name": "l_leg_08_pitch_joint",
+      "axis_pair": "ypitch",
+      "axis_vector_reference_pose": "[0,1,0]",
+      "semantic_motion": "leg 08 protraction/retraction",
+      "motion_class": "flexion_extension",
+      "positive_semantic_motion": "protraction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "left",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_08",
+      "chain_name": "leg_08",
+      "chain_index": 8,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "l_leg_08_pitch",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "r_leg_01_xr",
+      "entity_id": "dof:r:r_leg_01_xr",
+      "canonical_id": "r_leg_01_xr",
+      "formal_joint_name": "r_leg_01_xr_joint",
+      "expanded_joint_name": "r_leg_01_xroll_joint",
+      "ros_joint_name": "r_leg_01_roll_joint",
+      "axis_pair": "xroll",
+      "axis_vector_reference_pose": "[1,0,0]",
+      "semantic_motion": "leg 01 abduction/adduction",
+      "motion_class": "abduction_adduction",
+      "positive_semantic_motion": "abduction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "right",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_01",
+      "chain_name": "leg_01",
+      "chain_index": 1,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "r_leg_01_roll",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "r_leg_01_yp",
+      "entity_id": "dof:r:r_leg_01_yp",
+      "canonical_id": "r_leg_01_yp",
+      "formal_joint_name": "r_leg_01_yp_joint",
+      "expanded_joint_name": "r_leg_01_ypitch_joint",
+      "ros_joint_name": "r_leg_01_pitch_joint",
+      "axis_pair": "ypitch",
+      "axis_vector_reference_pose": "[0,1,0]",
+      "semantic_motion": "leg 01 protraction/retraction",
+      "motion_class": "flexion_extension",
+      "positive_semantic_motion": "protraction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "right",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_01",
+      "chain_name": "leg_01",
+      "chain_index": 1,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "r_leg_01_pitch",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "r_leg_02_xr",
+      "entity_id": "dof:r:r_leg_02_xr",
+      "canonical_id": "r_leg_02_xr",
+      "formal_joint_name": "r_leg_02_xr_joint",
+      "expanded_joint_name": "r_leg_02_xroll_joint",
+      "ros_joint_name": "r_leg_02_roll_joint",
+      "axis_pair": "xroll",
+      "axis_vector_reference_pose": "[1,0,0]",
+      "semantic_motion": "leg 02 abduction/adduction",
+      "motion_class": "abduction_adduction",
+      "positive_semantic_motion": "abduction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "right",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_02",
+      "chain_name": "leg_02",
+      "chain_index": 2,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "r_leg_02_roll",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "r_leg_02_yp",
+      "entity_id": "dof:r:r_leg_02_yp",
+      "canonical_id": "r_leg_02_yp",
+      "formal_joint_name": "r_leg_02_yp_joint",
+      "expanded_joint_name": "r_leg_02_ypitch_joint",
+      "ros_joint_name": "r_leg_02_pitch_joint",
+      "axis_pair": "ypitch",
+      "axis_vector_reference_pose": "[0,1,0]",
+      "semantic_motion": "leg 02 protraction/retraction",
+      "motion_class": "flexion_extension",
+      "positive_semantic_motion": "protraction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "right",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_02",
+      "chain_name": "leg_02",
+      "chain_index": 2,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "r_leg_02_pitch",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "r_leg_03_xr",
+      "entity_id": "dof:r:r_leg_03_xr",
+      "canonical_id": "r_leg_03_xr",
+      "formal_joint_name": "r_leg_03_xr_joint",
+      "expanded_joint_name": "r_leg_03_xroll_joint",
+      "ros_joint_name": "r_leg_03_roll_joint",
+      "axis_pair": "xroll",
+      "axis_vector_reference_pose": "[1,0,0]",
+      "semantic_motion": "leg 03 abduction/adduction",
+      "motion_class": "abduction_adduction",
+      "positive_semantic_motion": "abduction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "right",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_03",
+      "chain_name": "leg_03",
+      "chain_index": 3,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "r_leg_03_roll",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "r_leg_03_yp",
+      "entity_id": "dof:r:r_leg_03_yp",
+      "canonical_id": "r_leg_03_yp",
+      "formal_joint_name": "r_leg_03_yp_joint",
+      "expanded_joint_name": "r_leg_03_ypitch_joint",
+      "ros_joint_name": "r_leg_03_pitch_joint",
+      "axis_pair": "ypitch",
+      "axis_vector_reference_pose": "[0,1,0]",
+      "semantic_motion": "leg 03 protraction/retraction",
+      "motion_class": "flexion_extension",
+      "positive_semantic_motion": "protraction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "right",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_03",
+      "chain_name": "leg_03",
+      "chain_index": 3,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "r_leg_03_pitch",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "r_leg_04_xr",
+      "entity_id": "dof:r:r_leg_04_xr",
+      "canonical_id": "r_leg_04_xr",
+      "formal_joint_name": "r_leg_04_xr_joint",
+      "expanded_joint_name": "r_leg_04_xroll_joint",
+      "ros_joint_name": "r_leg_04_roll_joint",
+      "axis_pair": "xroll",
+      "axis_vector_reference_pose": "[1,0,0]",
+      "semantic_motion": "leg 04 abduction/adduction",
+      "motion_class": "abduction_adduction",
+      "positive_semantic_motion": "abduction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "right",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_04",
+      "chain_name": "leg_04",
+      "chain_index": 4,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "r_leg_04_roll",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "r_leg_04_yp",
+      "entity_id": "dof:r:r_leg_04_yp",
+      "canonical_id": "r_leg_04_yp",
+      "formal_joint_name": "r_leg_04_yp_joint",
+      "expanded_joint_name": "r_leg_04_ypitch_joint",
+      "ros_joint_name": "r_leg_04_pitch_joint",
+      "axis_pair": "ypitch",
+      "axis_vector_reference_pose": "[0,1,0]",
+      "semantic_motion": "leg 04 protraction/retraction",
+      "motion_class": "flexion_extension",
+      "positive_semantic_motion": "protraction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "right",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_04",
+      "chain_name": "leg_04",
+      "chain_index": 4,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "r_leg_04_pitch",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "r_leg_05_xr",
+      "entity_id": "dof:r:r_leg_05_xr",
+      "canonical_id": "r_leg_05_xr",
+      "formal_joint_name": "r_leg_05_xr_joint",
+      "expanded_joint_name": "r_leg_05_xroll_joint",
+      "ros_joint_name": "r_leg_05_roll_joint",
+      "axis_pair": "xroll",
+      "axis_vector_reference_pose": "[1,0,0]",
+      "semantic_motion": "leg 05 abduction/adduction",
+      "motion_class": "abduction_adduction",
+      "positive_semantic_motion": "abduction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "right",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_05",
+      "chain_name": "leg_05",
+      "chain_index": 5,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "r_leg_05_roll",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "r_leg_05_yp",
+      "entity_id": "dof:r:r_leg_05_yp",
+      "canonical_id": "r_leg_05_yp",
+      "formal_joint_name": "r_leg_05_yp_joint",
+      "expanded_joint_name": "r_leg_05_ypitch_joint",
+      "ros_joint_name": "r_leg_05_pitch_joint",
+      "axis_pair": "ypitch",
+      "axis_vector_reference_pose": "[0,1,0]",
+      "semantic_motion": "leg 05 protraction/retraction",
+      "motion_class": "flexion_extension",
+      "positive_semantic_motion": "protraction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "right",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_05",
+      "chain_name": "leg_05",
+      "chain_index": 5,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "r_leg_05_pitch",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "r_leg_06_xr",
+      "entity_id": "dof:r:r_leg_06_xr",
+      "canonical_id": "r_leg_06_xr",
+      "formal_joint_name": "r_leg_06_xr_joint",
+      "expanded_joint_name": "r_leg_06_xroll_joint",
+      "ros_joint_name": "r_leg_06_roll_joint",
+      "axis_pair": "xroll",
+      "axis_vector_reference_pose": "[1,0,0]",
+      "semantic_motion": "leg 06 abduction/adduction",
+      "motion_class": "abduction_adduction",
+      "positive_semantic_motion": "abduction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "right",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_06",
+      "chain_name": "leg_06",
+      "chain_index": 6,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "r_leg_06_roll",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "r_leg_06_yp",
+      "entity_id": "dof:r:r_leg_06_yp",
+      "canonical_id": "r_leg_06_yp",
+      "formal_joint_name": "r_leg_06_yp_joint",
+      "expanded_joint_name": "r_leg_06_ypitch_joint",
+      "ros_joint_name": "r_leg_06_pitch_joint",
+      "axis_pair": "ypitch",
+      "axis_vector_reference_pose": "[0,1,0]",
+      "semantic_motion": "leg 06 protraction/retraction",
+      "motion_class": "flexion_extension",
+      "positive_semantic_motion": "protraction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "right",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_06",
+      "chain_name": "leg_06",
+      "chain_index": 6,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "r_leg_06_pitch",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "r_leg_07_xr",
+      "entity_id": "dof:r:r_leg_07_xr",
+      "canonical_id": "r_leg_07_xr",
+      "formal_joint_name": "r_leg_07_xr_joint",
+      "expanded_joint_name": "r_leg_07_xroll_joint",
+      "ros_joint_name": "r_leg_07_roll_joint",
+      "axis_pair": "xroll",
+      "axis_vector_reference_pose": "[1,0,0]",
+      "semantic_motion": "leg 07 abduction/adduction",
+      "motion_class": "abduction_adduction",
+      "positive_semantic_motion": "abduction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "right",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_07",
+      "chain_name": "leg_07",
+      "chain_index": 7,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "r_leg_07_roll",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "r_leg_07_yp",
+      "entity_id": "dof:r:r_leg_07_yp",
+      "canonical_id": "r_leg_07_yp",
+      "formal_joint_name": "r_leg_07_yp_joint",
+      "expanded_joint_name": "r_leg_07_ypitch_joint",
+      "ros_joint_name": "r_leg_07_pitch_joint",
+      "axis_pair": "ypitch",
+      "axis_vector_reference_pose": "[0,1,0]",
+      "semantic_motion": "leg 07 protraction/retraction",
+      "motion_class": "flexion_extension",
+      "positive_semantic_motion": "protraction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "right",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_07",
+      "chain_name": "leg_07",
+      "chain_index": 7,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "r_leg_07_pitch",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "r_leg_08_xr",
+      "entity_id": "dof:r:r_leg_08_xr",
+      "canonical_id": "r_leg_08_xr",
+      "formal_joint_name": "r_leg_08_xr_joint",
+      "expanded_joint_name": "r_leg_08_xroll_joint",
+      "ros_joint_name": "r_leg_08_roll_joint",
+      "axis_pair": "xroll",
+      "axis_vector_reference_pose": "[1,0,0]",
+      "semantic_motion": "leg 08 abduction/adduction",
+      "motion_class": "abduction_adduction",
+      "positive_semantic_motion": "abduction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "right",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_08",
+      "chain_name": "leg_08",
+      "chain_index": 8,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "r_leg_08_roll",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
+    },
+    {
+      "target": "r_leg_08_yp",
+      "entity_id": "dof:r:r_leg_08_yp",
+      "canonical_id": "r_leg_08_yp",
+      "formal_joint_name": "r_leg_08_yp_joint",
+      "expanded_joint_name": "r_leg_08_ypitch_joint",
+      "ros_joint_name": "r_leg_08_pitch_joint",
+      "axis_pair": "ypitch",
+      "axis_vector_reference_pose": "[0,1,0]",
+      "semantic_motion": "leg 08 protraction/retraction",
+      "motion_class": "flexion_extension",
+      "positive_semantic_motion": "protraction",
+      "reference_pose": "neutral",
+      "axis_reference_pose": "neutral",
+      "side": "right",
+      "morphology": "arthropod",
+      "appendage_location": "leg",
+      "landmark": "leg_08",
+      "chain_name": "leg_08",
+      "chain_index": 8,
+      "chain_count": "model_defined",
+      "parent_link": "c_body",
+      "child_link": "r_leg_08_pitch",
+      "joint_type": "revolute",
+      "actuation_role": "profile_defined",
+      "mapping_confidence": "high",
+      "compatibility_aliases": [],
+      "functional_aliases": [],
+      "singleton_chain_rule": "Numbered from 01 front-to-back per side. chain_count is model-defined.",
+      "notes": "Arthropod/myriapod lateral leg pair. Use l_leg_NN_xr for abduction, l_leg_NN_yp for swing.",
+      "entity_status": "defined"
     }
   ],
   "link_targets": [
@@ -7521,6 +8545,636 @@
       "mapping_confidence": "high",
       "notes": "Canonicalized legacy intermediate link",
       "entity_id": "link:r:r_wing_wrist"
+    },
+    {
+      "target": "c_body",
+      "canonical_id": "c_body",
+      "expanded_link_name": "c_body_link",
+      "ros_link_name": "c_body_link",
+      "side": "center",
+      "morphology": "arthropod",
+      "region": "axial",
+      "segment_meaning": "arthropod main thorax/body rigid body",
+      "reference_pose": "neutral",
+      "chain_name": "body",
+      "chain_index": null,
+      "chain_count": null,
+      "parent_attachment": null,
+      "compatibility_aliases": [
+        "c_thorax",
+        "c_trunk"
+      ],
+      "mapping_confidence": "high",
+      "notes": "Root body link for arthropod/myriapod robots.",
+      "entity_id": "link:c:c_body"
+    },
+    {
+      "target": "l_leg_01_roll",
+      "canonical_id": "l_leg_01_roll",
+      "expanded_link_name": "l_leg_01_roll_link",
+      "ros_link_name": "l_leg_01_roll_link",
+      "side": "left",
+      "morphology": "arthropod",
+      "region": "leg_01",
+      "segment_meaning": "leg 01 proximal roll segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_01",
+      "chain_index": 1,
+      "chain_count": "model_defined",
+      "parent_attachment": "l_leg_01_xr",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:l:l_leg_01_roll"
+    },
+    {
+      "target": "l_leg_01_pitch",
+      "canonical_id": "l_leg_01_pitch",
+      "expanded_link_name": "l_leg_01_pitch_link",
+      "ros_link_name": "l_leg_01_pitch_link",
+      "side": "left",
+      "morphology": "arthropod",
+      "region": "leg_01",
+      "segment_meaning": "leg 01 distal pitch segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_01",
+      "chain_index": 1,
+      "chain_count": "model_defined",
+      "parent_attachment": "l_leg_01_yp",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:l:l_leg_01_pitch"
+    },
+    {
+      "target": "r_leg_01_roll",
+      "canonical_id": "r_leg_01_roll",
+      "expanded_link_name": "r_leg_01_roll_link",
+      "ros_link_name": "r_leg_01_roll_link",
+      "side": "right",
+      "morphology": "arthropod",
+      "region": "leg_01",
+      "segment_meaning": "leg 01 proximal roll segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_01",
+      "chain_index": 1,
+      "chain_count": "model_defined",
+      "parent_attachment": "r_leg_01_xr",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:r:r_leg_01_roll"
+    },
+    {
+      "target": "r_leg_01_pitch",
+      "canonical_id": "r_leg_01_pitch",
+      "expanded_link_name": "r_leg_01_pitch_link",
+      "ros_link_name": "r_leg_01_pitch_link",
+      "side": "right",
+      "morphology": "arthropod",
+      "region": "leg_01",
+      "segment_meaning": "leg 01 distal pitch segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_01",
+      "chain_index": 1,
+      "chain_count": "model_defined",
+      "parent_attachment": "r_leg_01_yp",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:r:r_leg_01_pitch"
+    },
+    {
+      "target": "l_leg_02_roll",
+      "canonical_id": "l_leg_02_roll",
+      "expanded_link_name": "l_leg_02_roll_link",
+      "ros_link_name": "l_leg_02_roll_link",
+      "side": "left",
+      "morphology": "arthropod",
+      "region": "leg_02",
+      "segment_meaning": "leg 02 proximal roll segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_02",
+      "chain_index": 2,
+      "chain_count": "model_defined",
+      "parent_attachment": "l_leg_02_xr",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:l:l_leg_02_roll"
+    },
+    {
+      "target": "l_leg_02_pitch",
+      "canonical_id": "l_leg_02_pitch",
+      "expanded_link_name": "l_leg_02_pitch_link",
+      "ros_link_name": "l_leg_02_pitch_link",
+      "side": "left",
+      "morphology": "arthropod",
+      "region": "leg_02",
+      "segment_meaning": "leg 02 distal pitch segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_02",
+      "chain_index": 2,
+      "chain_count": "model_defined",
+      "parent_attachment": "l_leg_02_yp",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:l:l_leg_02_pitch"
+    },
+    {
+      "target": "r_leg_02_roll",
+      "canonical_id": "r_leg_02_roll",
+      "expanded_link_name": "r_leg_02_roll_link",
+      "ros_link_name": "r_leg_02_roll_link",
+      "side": "right",
+      "morphology": "arthropod",
+      "region": "leg_02",
+      "segment_meaning": "leg 02 proximal roll segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_02",
+      "chain_index": 2,
+      "chain_count": "model_defined",
+      "parent_attachment": "r_leg_02_xr",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:r:r_leg_02_roll"
+    },
+    {
+      "target": "r_leg_02_pitch",
+      "canonical_id": "r_leg_02_pitch",
+      "expanded_link_name": "r_leg_02_pitch_link",
+      "ros_link_name": "r_leg_02_pitch_link",
+      "side": "right",
+      "morphology": "arthropod",
+      "region": "leg_02",
+      "segment_meaning": "leg 02 distal pitch segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_02",
+      "chain_index": 2,
+      "chain_count": "model_defined",
+      "parent_attachment": "r_leg_02_yp",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:r:r_leg_02_pitch"
+    },
+    {
+      "target": "l_leg_03_roll",
+      "canonical_id": "l_leg_03_roll",
+      "expanded_link_name": "l_leg_03_roll_link",
+      "ros_link_name": "l_leg_03_roll_link",
+      "side": "left",
+      "morphology": "arthropod",
+      "region": "leg_03",
+      "segment_meaning": "leg 03 proximal roll segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_03",
+      "chain_index": 3,
+      "chain_count": "model_defined",
+      "parent_attachment": "l_leg_03_xr",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:l:l_leg_03_roll"
+    },
+    {
+      "target": "l_leg_03_pitch",
+      "canonical_id": "l_leg_03_pitch",
+      "expanded_link_name": "l_leg_03_pitch_link",
+      "ros_link_name": "l_leg_03_pitch_link",
+      "side": "left",
+      "morphology": "arthropod",
+      "region": "leg_03",
+      "segment_meaning": "leg 03 distal pitch segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_03",
+      "chain_index": 3,
+      "chain_count": "model_defined",
+      "parent_attachment": "l_leg_03_yp",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:l:l_leg_03_pitch"
+    },
+    {
+      "target": "r_leg_03_roll",
+      "canonical_id": "r_leg_03_roll",
+      "expanded_link_name": "r_leg_03_roll_link",
+      "ros_link_name": "r_leg_03_roll_link",
+      "side": "right",
+      "morphology": "arthropod",
+      "region": "leg_03",
+      "segment_meaning": "leg 03 proximal roll segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_03",
+      "chain_index": 3,
+      "chain_count": "model_defined",
+      "parent_attachment": "r_leg_03_xr",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:r:r_leg_03_roll"
+    },
+    {
+      "target": "r_leg_03_pitch",
+      "canonical_id": "r_leg_03_pitch",
+      "expanded_link_name": "r_leg_03_pitch_link",
+      "ros_link_name": "r_leg_03_pitch_link",
+      "side": "right",
+      "morphology": "arthropod",
+      "region": "leg_03",
+      "segment_meaning": "leg 03 distal pitch segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_03",
+      "chain_index": 3,
+      "chain_count": "model_defined",
+      "parent_attachment": "r_leg_03_yp",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:r:r_leg_03_pitch"
+    },
+    {
+      "target": "l_leg_04_roll",
+      "canonical_id": "l_leg_04_roll",
+      "expanded_link_name": "l_leg_04_roll_link",
+      "ros_link_name": "l_leg_04_roll_link",
+      "side": "left",
+      "morphology": "arthropod",
+      "region": "leg_04",
+      "segment_meaning": "leg 04 proximal roll segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_04",
+      "chain_index": 4,
+      "chain_count": "model_defined",
+      "parent_attachment": "l_leg_04_xr",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:l:l_leg_04_roll"
+    },
+    {
+      "target": "l_leg_04_pitch",
+      "canonical_id": "l_leg_04_pitch",
+      "expanded_link_name": "l_leg_04_pitch_link",
+      "ros_link_name": "l_leg_04_pitch_link",
+      "side": "left",
+      "morphology": "arthropod",
+      "region": "leg_04",
+      "segment_meaning": "leg 04 distal pitch segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_04",
+      "chain_index": 4,
+      "chain_count": "model_defined",
+      "parent_attachment": "l_leg_04_yp",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:l:l_leg_04_pitch"
+    },
+    {
+      "target": "r_leg_04_roll",
+      "canonical_id": "r_leg_04_roll",
+      "expanded_link_name": "r_leg_04_roll_link",
+      "ros_link_name": "r_leg_04_roll_link",
+      "side": "right",
+      "morphology": "arthropod",
+      "region": "leg_04",
+      "segment_meaning": "leg 04 proximal roll segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_04",
+      "chain_index": 4,
+      "chain_count": "model_defined",
+      "parent_attachment": "r_leg_04_xr",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:r:r_leg_04_roll"
+    },
+    {
+      "target": "r_leg_04_pitch",
+      "canonical_id": "r_leg_04_pitch",
+      "expanded_link_name": "r_leg_04_pitch_link",
+      "ros_link_name": "r_leg_04_pitch_link",
+      "side": "right",
+      "morphology": "arthropod",
+      "region": "leg_04",
+      "segment_meaning": "leg 04 distal pitch segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_04",
+      "chain_index": 4,
+      "chain_count": "model_defined",
+      "parent_attachment": "r_leg_04_yp",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:r:r_leg_04_pitch"
+    },
+    {
+      "target": "l_leg_05_roll",
+      "canonical_id": "l_leg_05_roll",
+      "expanded_link_name": "l_leg_05_roll_link",
+      "ros_link_name": "l_leg_05_roll_link",
+      "side": "left",
+      "morphology": "arthropod",
+      "region": "leg_05",
+      "segment_meaning": "leg 05 proximal roll segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_05",
+      "chain_index": 5,
+      "chain_count": "model_defined",
+      "parent_attachment": "l_leg_05_xr",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:l:l_leg_05_roll"
+    },
+    {
+      "target": "l_leg_05_pitch",
+      "canonical_id": "l_leg_05_pitch",
+      "expanded_link_name": "l_leg_05_pitch_link",
+      "ros_link_name": "l_leg_05_pitch_link",
+      "side": "left",
+      "morphology": "arthropod",
+      "region": "leg_05",
+      "segment_meaning": "leg 05 distal pitch segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_05",
+      "chain_index": 5,
+      "chain_count": "model_defined",
+      "parent_attachment": "l_leg_05_yp",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:l:l_leg_05_pitch"
+    },
+    {
+      "target": "r_leg_05_roll",
+      "canonical_id": "r_leg_05_roll",
+      "expanded_link_name": "r_leg_05_roll_link",
+      "ros_link_name": "r_leg_05_roll_link",
+      "side": "right",
+      "morphology": "arthropod",
+      "region": "leg_05",
+      "segment_meaning": "leg 05 proximal roll segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_05",
+      "chain_index": 5,
+      "chain_count": "model_defined",
+      "parent_attachment": "r_leg_05_xr",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:r:r_leg_05_roll"
+    },
+    {
+      "target": "r_leg_05_pitch",
+      "canonical_id": "r_leg_05_pitch",
+      "expanded_link_name": "r_leg_05_pitch_link",
+      "ros_link_name": "r_leg_05_pitch_link",
+      "side": "right",
+      "morphology": "arthropod",
+      "region": "leg_05",
+      "segment_meaning": "leg 05 distal pitch segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_05",
+      "chain_index": 5,
+      "chain_count": "model_defined",
+      "parent_attachment": "r_leg_05_yp",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:r:r_leg_05_pitch"
+    },
+    {
+      "target": "l_leg_06_roll",
+      "canonical_id": "l_leg_06_roll",
+      "expanded_link_name": "l_leg_06_roll_link",
+      "ros_link_name": "l_leg_06_roll_link",
+      "side": "left",
+      "morphology": "arthropod",
+      "region": "leg_06",
+      "segment_meaning": "leg 06 proximal roll segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_06",
+      "chain_index": 6,
+      "chain_count": "model_defined",
+      "parent_attachment": "l_leg_06_xr",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:l:l_leg_06_roll"
+    },
+    {
+      "target": "l_leg_06_pitch",
+      "canonical_id": "l_leg_06_pitch",
+      "expanded_link_name": "l_leg_06_pitch_link",
+      "ros_link_name": "l_leg_06_pitch_link",
+      "side": "left",
+      "morphology": "arthropod",
+      "region": "leg_06",
+      "segment_meaning": "leg 06 distal pitch segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_06",
+      "chain_index": 6,
+      "chain_count": "model_defined",
+      "parent_attachment": "l_leg_06_yp",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:l:l_leg_06_pitch"
+    },
+    {
+      "target": "r_leg_06_roll",
+      "canonical_id": "r_leg_06_roll",
+      "expanded_link_name": "r_leg_06_roll_link",
+      "ros_link_name": "r_leg_06_roll_link",
+      "side": "right",
+      "morphology": "arthropod",
+      "region": "leg_06",
+      "segment_meaning": "leg 06 proximal roll segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_06",
+      "chain_index": 6,
+      "chain_count": "model_defined",
+      "parent_attachment": "r_leg_06_xr",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:r:r_leg_06_roll"
+    },
+    {
+      "target": "r_leg_06_pitch",
+      "canonical_id": "r_leg_06_pitch",
+      "expanded_link_name": "r_leg_06_pitch_link",
+      "ros_link_name": "r_leg_06_pitch_link",
+      "side": "right",
+      "morphology": "arthropod",
+      "region": "leg_06",
+      "segment_meaning": "leg 06 distal pitch segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_06",
+      "chain_index": 6,
+      "chain_count": "model_defined",
+      "parent_attachment": "r_leg_06_yp",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:r:r_leg_06_pitch"
+    },
+    {
+      "target": "l_leg_07_roll",
+      "canonical_id": "l_leg_07_roll",
+      "expanded_link_name": "l_leg_07_roll_link",
+      "ros_link_name": "l_leg_07_roll_link",
+      "side": "left",
+      "morphology": "arthropod",
+      "region": "leg_07",
+      "segment_meaning": "leg 07 proximal roll segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_07",
+      "chain_index": 7,
+      "chain_count": "model_defined",
+      "parent_attachment": "l_leg_07_xr",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:l:l_leg_07_roll"
+    },
+    {
+      "target": "l_leg_07_pitch",
+      "canonical_id": "l_leg_07_pitch",
+      "expanded_link_name": "l_leg_07_pitch_link",
+      "ros_link_name": "l_leg_07_pitch_link",
+      "side": "left",
+      "morphology": "arthropod",
+      "region": "leg_07",
+      "segment_meaning": "leg 07 distal pitch segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_07",
+      "chain_index": 7,
+      "chain_count": "model_defined",
+      "parent_attachment": "l_leg_07_yp",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:l:l_leg_07_pitch"
+    },
+    {
+      "target": "r_leg_07_roll",
+      "canonical_id": "r_leg_07_roll",
+      "expanded_link_name": "r_leg_07_roll_link",
+      "ros_link_name": "r_leg_07_roll_link",
+      "side": "right",
+      "morphology": "arthropod",
+      "region": "leg_07",
+      "segment_meaning": "leg 07 proximal roll segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_07",
+      "chain_index": 7,
+      "chain_count": "model_defined",
+      "parent_attachment": "r_leg_07_xr",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:r:r_leg_07_roll"
+    },
+    {
+      "target": "r_leg_07_pitch",
+      "canonical_id": "r_leg_07_pitch",
+      "expanded_link_name": "r_leg_07_pitch_link",
+      "ros_link_name": "r_leg_07_pitch_link",
+      "side": "right",
+      "morphology": "arthropod",
+      "region": "leg_07",
+      "segment_meaning": "leg 07 distal pitch segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_07",
+      "chain_index": 7,
+      "chain_count": "model_defined",
+      "parent_attachment": "r_leg_07_yp",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:r:r_leg_07_pitch"
+    },
+    {
+      "target": "l_leg_08_roll",
+      "canonical_id": "l_leg_08_roll",
+      "expanded_link_name": "l_leg_08_roll_link",
+      "ros_link_name": "l_leg_08_roll_link",
+      "side": "left",
+      "morphology": "arthropod",
+      "region": "leg_08",
+      "segment_meaning": "leg 08 proximal roll segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_08",
+      "chain_index": 8,
+      "chain_count": "model_defined",
+      "parent_attachment": "l_leg_08_xr",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:l:l_leg_08_roll"
+    },
+    {
+      "target": "l_leg_08_pitch",
+      "canonical_id": "l_leg_08_pitch",
+      "expanded_link_name": "l_leg_08_pitch_link",
+      "ros_link_name": "l_leg_08_pitch_link",
+      "side": "left",
+      "morphology": "arthropod",
+      "region": "leg_08",
+      "segment_meaning": "leg 08 distal pitch segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_08",
+      "chain_index": 8,
+      "chain_count": "model_defined",
+      "parent_attachment": "l_leg_08_yp",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:l:l_leg_08_pitch"
+    },
+    {
+      "target": "r_leg_08_roll",
+      "canonical_id": "r_leg_08_roll",
+      "expanded_link_name": "r_leg_08_roll_link",
+      "ros_link_name": "r_leg_08_roll_link",
+      "side": "right",
+      "morphology": "arthropod",
+      "region": "leg_08",
+      "segment_meaning": "leg 08 proximal roll segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_08",
+      "chain_index": 8,
+      "chain_count": "model_defined",
+      "parent_attachment": "r_leg_08_xr",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:r:r_leg_08_roll"
+    },
+    {
+      "target": "r_leg_08_pitch",
+      "canonical_id": "r_leg_08_pitch",
+      "expanded_link_name": "r_leg_08_pitch_link",
+      "ros_link_name": "r_leg_08_pitch_link",
+      "side": "right",
+      "morphology": "arthropod",
+      "region": "leg_08",
+      "segment_meaning": "leg 08 distal pitch segment",
+      "reference_pose": "neutral",
+      "chain_name": "leg_08",
+      "chain_index": 8,
+      "chain_count": "model_defined",
+      "parent_attachment": "r_leg_08_yp",
+      "compatibility_aliases": [],
+      "mapping_confidence": "high",
+      "notes": "Arthropod lateral leg segment.",
+      "entity_id": "link:r:r_leg_08_pitch"
     }
   ],
   "loop_targets": [],
@@ -18785,6 +20439,1752 @@
         "mapping_type": "topology_alias",
         "source": "link_tree_via_joint_stub",
         "notes": "Provisional topology-evidenced DOF"
+      }
+    ],
+    "l_leg_01_xr": [
+      {
+        "entity": "joint",
+        "target": "l_leg_01_xr",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_01_xr_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_01_xr",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_01_xroll_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_01_xr",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_01_roll_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_01_xr",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_01_yp": [
+      {
+        "entity": "joint",
+        "target": "l_leg_01_yp",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_01_yp_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_01_yp",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_01_ypitch_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_01_yp",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_01_pitch_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_01_yp",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_01_xr": [
+      {
+        "entity": "joint",
+        "target": "r_leg_01_xr",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_01_xr_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_01_xr",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_01_xroll_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_01_xr",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_01_roll_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_01_xr",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_01_yp": [
+      {
+        "entity": "joint",
+        "target": "r_leg_01_yp",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_01_yp_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_01_yp",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_01_ypitch_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_01_yp",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_01_pitch_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_01_yp",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_02_xr": [
+      {
+        "entity": "joint",
+        "target": "l_leg_02_xr",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_02_xr_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_02_xr",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_02_xroll_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_02_xr",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_02_roll_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_02_xr",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_02_yp": [
+      {
+        "entity": "joint",
+        "target": "l_leg_02_yp",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_02_yp_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_02_yp",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_02_ypitch_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_02_yp",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_02_pitch_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_02_yp",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_02_xr": [
+      {
+        "entity": "joint",
+        "target": "r_leg_02_xr",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_02_xr_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_02_xr",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_02_xroll_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_02_xr",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_02_roll_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_02_xr",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_02_yp": [
+      {
+        "entity": "joint",
+        "target": "r_leg_02_yp",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_02_yp_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_02_yp",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_02_ypitch_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_02_yp",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_02_pitch_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_02_yp",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_03_xr": [
+      {
+        "entity": "joint",
+        "target": "l_leg_03_xr",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_03_xr_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_03_xr",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_03_xroll_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_03_xr",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_03_roll_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_03_xr",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_03_yp": [
+      {
+        "entity": "joint",
+        "target": "l_leg_03_yp",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_03_yp_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_03_yp",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_03_ypitch_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_03_yp",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_03_pitch_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_03_yp",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_03_xr": [
+      {
+        "entity": "joint",
+        "target": "r_leg_03_xr",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_03_xr_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_03_xr",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_03_xroll_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_03_xr",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_03_roll_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_03_xr",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_03_yp": [
+      {
+        "entity": "joint",
+        "target": "r_leg_03_yp",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_03_yp_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_03_yp",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_03_ypitch_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_03_yp",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_03_pitch_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_03_yp",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_04_xr": [
+      {
+        "entity": "joint",
+        "target": "l_leg_04_xr",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_04_xr_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_04_xr",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_04_xroll_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_04_xr",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_04_roll_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_04_xr",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_04_yp": [
+      {
+        "entity": "joint",
+        "target": "l_leg_04_yp",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_04_yp_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_04_yp",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_04_ypitch_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_04_yp",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_04_pitch_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_04_yp",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_04_xr": [
+      {
+        "entity": "joint",
+        "target": "r_leg_04_xr",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_04_xr_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_04_xr",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_04_xroll_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_04_xr",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_04_roll_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_04_xr",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_04_yp": [
+      {
+        "entity": "joint",
+        "target": "r_leg_04_yp",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_04_yp_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_04_yp",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_04_ypitch_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_04_yp",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_04_pitch_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_04_yp",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_05_xr": [
+      {
+        "entity": "joint",
+        "target": "l_leg_05_xr",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_05_xr_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_05_xr",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_05_xroll_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_05_xr",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_05_roll_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_05_xr",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_05_yp": [
+      {
+        "entity": "joint",
+        "target": "l_leg_05_yp",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_05_yp_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_05_yp",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_05_ypitch_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_05_yp",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_05_pitch_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_05_yp",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_05_xr": [
+      {
+        "entity": "joint",
+        "target": "r_leg_05_xr",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_05_xr_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_05_xr",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_05_xroll_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_05_xr",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_05_roll_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_05_xr",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_05_yp": [
+      {
+        "entity": "joint",
+        "target": "r_leg_05_yp",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_05_yp_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_05_yp",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_05_ypitch_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_05_yp",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_05_pitch_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_05_yp",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_06_xr": [
+      {
+        "entity": "joint",
+        "target": "l_leg_06_xr",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_06_xr_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_06_xr",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_06_xroll_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_06_xr",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_06_roll_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_06_xr",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_06_yp": [
+      {
+        "entity": "joint",
+        "target": "l_leg_06_yp",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_06_yp_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_06_yp",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_06_ypitch_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_06_yp",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_06_pitch_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_06_yp",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_06_xr": [
+      {
+        "entity": "joint",
+        "target": "r_leg_06_xr",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_06_xr_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_06_xr",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_06_xroll_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_06_xr",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_06_roll_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_06_xr",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_06_yp": [
+      {
+        "entity": "joint",
+        "target": "r_leg_06_yp",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_06_yp_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_06_yp",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_06_ypitch_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_06_yp",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_06_pitch_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_06_yp",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_07_xr": [
+      {
+        "entity": "joint",
+        "target": "l_leg_07_xr",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_07_xr_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_07_xr",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_07_xroll_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_07_xr",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_07_roll_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_07_xr",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_07_yp": [
+      {
+        "entity": "joint",
+        "target": "l_leg_07_yp",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_07_yp_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_07_yp",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_07_ypitch_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_07_yp",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_07_pitch_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_07_yp",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_07_xr": [
+      {
+        "entity": "joint",
+        "target": "r_leg_07_xr",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_07_xr_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_07_xr",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_07_xroll_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_07_xr",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_07_roll_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_07_xr",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_07_yp": [
+      {
+        "entity": "joint",
+        "target": "r_leg_07_yp",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_07_yp_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_07_yp",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_07_ypitch_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_07_yp",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_07_pitch_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_07_yp",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_08_xr": [
+      {
+        "entity": "joint",
+        "target": "l_leg_08_xr",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_08_xr_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_08_xr",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_08_xroll_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_08_xr",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_08_roll_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_08_xr",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_08_yp": [
+      {
+        "entity": "joint",
+        "target": "l_leg_08_yp",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_08_yp_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_08_yp",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_08_ypitch_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_08_yp",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_08_pitch_joint": [
+      {
+        "entity": "joint",
+        "target": "l_leg_08_yp",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_08_xr": [
+      {
+        "entity": "joint",
+        "target": "r_leg_08_xr",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_08_xr_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_08_xr",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_08_xroll_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_08_xr",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_08_roll_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_08_xr",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_08_yp": [
+      {
+        "entity": "joint",
+        "target": "r_leg_08_yp",
+        "source": "master:servo_simplified",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_08_yp_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_08_yp",
+        "source": "master:compact_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_08_ypitch_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_08_yp",
+        "source": "master:formal_joint",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_08_pitch_joint": [
+      {
+        "entity": "joint",
+        "target": "r_leg_08_yp",
+        "source": "master:ros_alias",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_01_roll": [
+      {
+        "entity": "link",
+        "target": "l_leg_01_roll",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_01_roll_link": [
+      {
+        "entity": "link",
+        "target": "l_leg_01_roll",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_01_pitch": [
+      {
+        "entity": "link",
+        "target": "l_leg_01_pitch",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_01_pitch_link": [
+      {
+        "entity": "link",
+        "target": "l_leg_01_pitch",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_02_roll": [
+      {
+        "entity": "link",
+        "target": "l_leg_02_roll",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_02_roll_link": [
+      {
+        "entity": "link",
+        "target": "l_leg_02_roll",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_02_pitch": [
+      {
+        "entity": "link",
+        "target": "l_leg_02_pitch",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_02_pitch_link": [
+      {
+        "entity": "link",
+        "target": "l_leg_02_pitch",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_03_roll": [
+      {
+        "entity": "link",
+        "target": "l_leg_03_roll",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_03_roll_link": [
+      {
+        "entity": "link",
+        "target": "l_leg_03_roll",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_03_pitch": [
+      {
+        "entity": "link",
+        "target": "l_leg_03_pitch",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_03_pitch_link": [
+      {
+        "entity": "link",
+        "target": "l_leg_03_pitch",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_04_roll": [
+      {
+        "entity": "link",
+        "target": "l_leg_04_roll",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_04_roll_link": [
+      {
+        "entity": "link",
+        "target": "l_leg_04_roll",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_04_pitch": [
+      {
+        "entity": "link",
+        "target": "l_leg_04_pitch",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_04_pitch_link": [
+      {
+        "entity": "link",
+        "target": "l_leg_04_pitch",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_05_roll": [
+      {
+        "entity": "link",
+        "target": "l_leg_05_roll",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_05_roll_link": [
+      {
+        "entity": "link",
+        "target": "l_leg_05_roll",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_05_pitch": [
+      {
+        "entity": "link",
+        "target": "l_leg_05_pitch",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_05_pitch_link": [
+      {
+        "entity": "link",
+        "target": "l_leg_05_pitch",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_06_roll": [
+      {
+        "entity": "link",
+        "target": "l_leg_06_roll",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_06_roll_link": [
+      {
+        "entity": "link",
+        "target": "l_leg_06_roll",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_06_pitch": [
+      {
+        "entity": "link",
+        "target": "l_leg_06_pitch",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_06_pitch_link": [
+      {
+        "entity": "link",
+        "target": "l_leg_06_pitch",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_07_roll": [
+      {
+        "entity": "link",
+        "target": "l_leg_07_roll",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_07_roll_link": [
+      {
+        "entity": "link",
+        "target": "l_leg_07_roll",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_07_pitch": [
+      {
+        "entity": "link",
+        "target": "l_leg_07_pitch",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_07_pitch_link": [
+      {
+        "entity": "link",
+        "target": "l_leg_07_pitch",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_08_roll": [
+      {
+        "entity": "link",
+        "target": "l_leg_08_roll",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_08_roll_link": [
+      {
+        "entity": "link",
+        "target": "l_leg_08_roll",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_08_pitch": [
+      {
+        "entity": "link",
+        "target": "l_leg_08_pitch",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "l_leg_08_pitch_link": [
+      {
+        "entity": "link",
+        "target": "l_leg_08_pitch",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_01_roll": [
+      {
+        "entity": "link",
+        "target": "r_leg_01_roll",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_01_roll_link": [
+      {
+        "entity": "link",
+        "target": "r_leg_01_roll",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_01_pitch": [
+      {
+        "entity": "link",
+        "target": "r_leg_01_pitch",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_01_pitch_link": [
+      {
+        "entity": "link",
+        "target": "r_leg_01_pitch",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_02_roll": [
+      {
+        "entity": "link",
+        "target": "r_leg_02_roll",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_02_roll_link": [
+      {
+        "entity": "link",
+        "target": "r_leg_02_roll",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_02_pitch": [
+      {
+        "entity": "link",
+        "target": "r_leg_02_pitch",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_02_pitch_link": [
+      {
+        "entity": "link",
+        "target": "r_leg_02_pitch",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_03_roll": [
+      {
+        "entity": "link",
+        "target": "r_leg_03_roll",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_03_roll_link": [
+      {
+        "entity": "link",
+        "target": "r_leg_03_roll",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_03_pitch": [
+      {
+        "entity": "link",
+        "target": "r_leg_03_pitch",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_03_pitch_link": [
+      {
+        "entity": "link",
+        "target": "r_leg_03_pitch",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_04_roll": [
+      {
+        "entity": "link",
+        "target": "r_leg_04_roll",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_04_roll_link": [
+      {
+        "entity": "link",
+        "target": "r_leg_04_roll",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_04_pitch": [
+      {
+        "entity": "link",
+        "target": "r_leg_04_pitch",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_04_pitch_link": [
+      {
+        "entity": "link",
+        "target": "r_leg_04_pitch",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_05_roll": [
+      {
+        "entity": "link",
+        "target": "r_leg_05_roll",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_05_roll_link": [
+      {
+        "entity": "link",
+        "target": "r_leg_05_roll",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_05_pitch": [
+      {
+        "entity": "link",
+        "target": "r_leg_05_pitch",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_05_pitch_link": [
+      {
+        "entity": "link",
+        "target": "r_leg_05_pitch",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_06_roll": [
+      {
+        "entity": "link",
+        "target": "r_leg_06_roll",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_06_roll_link": [
+      {
+        "entity": "link",
+        "target": "r_leg_06_roll",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_06_pitch": [
+      {
+        "entity": "link",
+        "target": "r_leg_06_pitch",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_06_pitch_link": [
+      {
+        "entity": "link",
+        "target": "r_leg_06_pitch",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_07_roll": [
+      {
+        "entity": "link",
+        "target": "r_leg_07_roll",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_07_roll_link": [
+      {
+        "entity": "link",
+        "target": "r_leg_07_roll",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_07_pitch": [
+      {
+        "entity": "link",
+        "target": "r_leg_07_pitch",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_07_pitch_link": [
+      {
+        "entity": "link",
+        "target": "r_leg_07_pitch",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_08_roll": [
+      {
+        "entity": "link",
+        "target": "r_leg_08_roll",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_08_roll_link": [
+      {
+        "entity": "link",
+        "target": "r_leg_08_roll",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_08_pitch": [
+      {
+        "entity": "link",
+        "target": "r_leg_08_pitch",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "r_leg_08_pitch_link": [
+      {
+        "entity": "link",
+        "target": "r_leg_08_pitch",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "c_body": [
+      {
+        "entity": "link",
+        "target": "c_body",
+        "source": "master:canonical_id",
+        "confidence": "high",
+        "mapping_type": "direct"
+      }
+    ],
+    "c_body_link": [
+      {
+        "entity": "link",
+        "target": "c_body",
+        "source": "master:compact_link",
+        "confidence": "high",
+        "mapping_type": "direct"
       }
     ]
   },
