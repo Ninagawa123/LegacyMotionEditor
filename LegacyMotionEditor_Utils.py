@@ -704,6 +704,92 @@ JOINT_TO_MERIDIM = {
     "r_leg_upper_to_r_leg_lower":           (67,  1.0),
     "r_leg_lower_to_r_ankle":              (69,  1.0),
     "r_ankle_to_r_foot":                   (71, -1.0),
+    # === arthropod (multi-legged robots: up to 8 legs per side) ===
+    # _xr = abduction/adduction axis, _yp = protraction/retraction axis.
+    # Indices overlap with humanoid — safe because only one morphology loads at a time.
+    # Multipliers default 1.0; adjust per hardware servo orientation if needed.
+    "l_leg_01_xr":  (21,  1.0),  "l_leg_01_yp":  (23,  1.0),
+    "l_leg_02_xr":  (25,  1.0),  "l_leg_02_yp":  (27,  1.0),
+    "l_leg_03_xr":  (29,  1.0),  "l_leg_03_yp":  (31,  1.0),
+    "l_leg_04_xr":  (33,  1.0),  "l_leg_04_yp":  (35,  1.0),
+    "l_leg_05_xr":  (37,  1.0),  "l_leg_05_yp":  (39,  1.0),
+    "l_leg_06_xr":  (41,  1.0),  "l_leg_06_yp":  (43,  1.0),
+    "l_leg_07_xr":  (45,  1.0),  "l_leg_07_yp":  (47,  1.0),
+    "l_leg_08_xr":  (49,  1.0),  "l_leg_08_yp":  (51,  1.0),
+    "r_leg_01_xr":  (51, -1.0),  "r_leg_01_yp":  (53,  1.0),
+    "r_leg_02_xr":  (55, -1.0),  "r_leg_02_yp":  (57,  1.0),
+    "r_leg_03_xr":  (59, -1.0),  "r_leg_03_yp":  (61,  1.0),
+    "r_leg_04_xr":  (63, -1.0),  "r_leg_04_yp":  (65,  1.0),
+    "r_leg_05_xr":  (67, -1.0),  "r_leg_05_yp":  (69,  1.0),
+    "r_leg_06_xr":  (71, -1.0),  "r_leg_06_yp":  (73,  1.0),
+    "r_leg_07_xr":  (75, -1.0),  "r_leg_07_yp":  (77,  1.0),
+    "r_leg_08_xr":  (79, -1.0),  "r_leg_08_yp":  (81,  1.0),
+    # === quadruped ===
+    "l_fore_scapula_xr":   (21,  1.0),
+    "l_fore_shoulder_xr":  (23,  1.0),
+    "l_fore_shoulder_yp":  (25,  1.0),
+    "l_fore_shoulder_zy":  (27,  1.0),
+    "l_fore_elbow_yp":     (29,  1.0),
+    "l_fore_carpus_yp":    (31,  1.0),
+    "l_fore_paw_xr":       (33,  1.0),
+    "l_hind_hipjoint_xr":  (35,  1.0),
+    "l_hind_hipjoint_yp":  (37,  1.0),
+    "l_hind_hipjoint_zy":  (39,  1.0),
+    "l_hind_stifle_yp":    (41,  1.0),
+    "l_hind_tarsus_yp":    (43,  1.0),
+    "l_hind_paw_xr":       (45,  1.0),
+    "r_fore_scapula_xr":   (47, -1.0),
+    "r_fore_shoulder_xr":  (49, -1.0),
+    "r_fore_shoulder_yp":  (51,  1.0),
+    "r_fore_shoulder_zy":  (53, -1.0),
+    "r_fore_elbow_yp":     (55,  1.0),
+    "r_fore_carpus_yp":    (57,  1.0),
+    "r_fore_paw_xr":       (59, -1.0),
+    "r_hind_hipjoint_xr":  (61, -1.0),
+    "r_hind_hipjoint_yp":  (63,  1.0),
+    "r_hind_hipjoint_zy":  (65, -1.0),
+    "r_hind_stifle_yp":    (67,  1.0),
+    "r_hind_tarsus_yp":    (69,  1.0),
+    "r_hind_paw_xr":       (71, -1.0),
+    "l_fore_lower_limb_yp": (31,  1.0),
+    "r_fore_lower_limb_yp": (57,  1.0),
+    "l_hind_upper_limb_yp": (37,  1.0),
+    "l_hind_lower_limb_yp": (43,  1.0),
+    "r_hind_upper_limb_yp": (63,  1.0),
+    "r_hind_lower_limb_yp": (69,  1.0),
+    # === avian ===
+    "l_wing_shoulder_xr":  (21,  1.0),
+    "l_wing_shoulder_yp":  (23,  1.0),
+    "l_wing_shoulder_zy":  (25,  1.0),
+    "l_wing_elbow_yp":     (27,  1.0),
+    "l_wing_wrist_yp":     (29,  1.0),
+    "l_alula_yp":          (31,  1.0),
+    "l_wing_upper_zy":     (33,  1.0),
+    "l_wing_fore_yp":      (35,  1.0),
+    "l_wing_hand_yp":      (37,  1.0),
+    "r_wing_shoulder_xr":  (39, -1.0),
+    "r_wing_shoulder_yp":  (41,  1.0),
+    "r_wing_shoulder_zy":  (43, -1.0),
+    "r_wing_elbow_yp":     (45,  1.0),
+    "r_wing_wrist_yp":     (47,  1.0),
+    "r_alula_yp":          (49,  1.0),
+    "r_wing_upper_zy":     (51, -1.0),
+    "r_wing_fore_yp":      (53,  1.0),
+    "r_wing_hand_yp":      (55,  1.0),
+    # === generic_vertebrate (neck / tail chains) ===
+    "c_neck_01_yp":  (21,  1.0),  "c_neck_02_yp":  (23,  1.0),
+    "c_neck_03_yp":  (25,  1.0),  "c_neck_04_yp":  (27,  1.0),
+    "c_neck_05_yp":  (29,  1.0),  "c_neck_06_yp":  (31,  1.0),
+    "c_tail_01_yp":  (33,  1.0),  "c_tail_01_zy":  (35,  1.0),
+    "c_tail_02_yp":  (37,  1.0),  "c_tail_02_zy":  (39,  1.0),
+    "c_tail_03_yp":  (41,  1.0),  "c_tail_03_zy":  (43,  1.0),
+    "c_tail_04_yp":  (45,  1.0),  "c_tail_04_zy":  (47,  1.0),
+    "c_tail_05_yp":  (49,  1.0),  "c_tail_05_zy":  (51,  1.0),
+    "c_tail_06_yp":  (53,  1.0),  "c_tail_06_zy":  (55,  1.0),
+    "c_tail_07_yp":  (57,  1.0),  "c_tail_07_zy":  (59,  1.0),
+    "c_tail_08_yp":  (61,  1.0),  "c_tail_08_zy":  (63,  1.0),
+    "c_tail_09_yp":  (65,  1.0),  "c_tail_09_zy":  (67,  1.0),
+    "c_tail_10_yp":  (69,  1.0),  "c_tail_10_zy":  (71,  1.0),
 }
 
 
@@ -779,10 +865,13 @@ def _cartridge_joint_used(mjcf_name: str, joints_used: set[str]) -> bool:
     return False
 
 
-def build_joints_dict(joints_used: set[str] | None = None) -> dict[str, int]:
+def build_joints_dict(
+    joints_used: set[str] | None = None,
+    joints: tuple[str, ...] | None = None,
+) -> dict[str, int]:
     """{SHORT_NAME: meridim_idx} for exported cartridge JOINTS dict."""
     result: dict[str, int] = {}
-    for mjcf_name in CANONICAL_MJCF_JOINTS:
+    for mjcf_name in (joints if joints is not None else CANONICAL_MJCF_JOINTS):
         entry = JOINT_TO_MERIDIM.get(mjcf_name)
         if entry is None:
             continue
@@ -794,10 +883,17 @@ def build_joints_dict(joints_used: set[str] | None = None) -> dict[str, int]:
     return result
 
 
-def build_meridim_joint_map(role: str = "servo") -> list[dict]:
-    """MERIDIM_JOINT_MAP entries for PhysicalOn (canonical MJCF joint names)."""
+def build_meridim_joint_map(
+    joints: tuple[str, ...] | None = None,
+    role: str = "servo",
+) -> list[dict]:
+    """MERIDIM_JOINT_MAP entries for PhysicalOn (canonical MJCF joint names).
+
+    Pass ``joints`` (from robot_model.joint_order) to use the loaded model's
+    actual joint list instead of the humanoid-only CANONICAL_MJCF_JOINTS.
+    """
     entries: list[dict] = []
-    for mjcf_name in CANONICAL_MJCF_JOINTS:
+    for mjcf_name in (joints if joints is not None else CANONICAL_MJCF_JOINTS):
         entry = JOINT_TO_MERIDIM.get(mjcf_name)
         if entry is None:
             continue
@@ -907,6 +1003,14 @@ NODE_DEFINE_PANEL_BG_COLOR = (195, 195, 200)
 NODE_DEFINE_TITLE_HIGHLIGHT_COLOR = NODE_POSE_TITLE_HIGHLIGHT_COLOR
 NODE_DEFINE_TITLE_BG_HIGHLIGHT_COLOR = (90, 130, 210)
 NODE_DEFINE_PANEL_BG_HIGHLIGHT_COLOR = (205, 215, 235)
+
+# --- WaitNode ---
+NODE_WAIT_TITLE_COLOR = NODE_POSE_TITLE_COLOR
+NODE_WAIT_TITLE_BG_COLOR = NODE_POSE_TITLE_BG_COLOR   # same beige as PoseNode
+NODE_WAIT_PANEL_BG_COLOR = (200, 202, 198)             # light gray panel
+NODE_WAIT_TITLE_HIGHLIGHT_COLOR = NODE_POSE_TITLE_HIGHLIGHT_COLOR
+NODE_WAIT_TITLE_BG_HIGHLIGHT_COLOR = NODE_POSE_TITLE_BG_HIGHLIGHT_COLOR
+NODE_WAIT_PANEL_BG_HIGHLIGHT_COLOR = (220, 222, 218)
 
 # --- BranchingNode ---
 NODE_BRANCH_TITLE_COLOR = (255, 252, 248)
@@ -1803,6 +1907,30 @@ class VirtualDefineNode:
         return self._input_ports
 
 
+class VirtualWaitNode:
+    """Virtual WaitNode for cross-action playback."""
+
+    def __init__(self, node_data):
+        self._name = node_data.get("name", "Wait")
+        self._id = node_data.get("id", "")
+        self.wait_name = node_data.get("name", "Wait")
+        self.frames = int(node_data.get("frames", 0))
+        self.duration = float(node_data.get("duration", 0.0))
+        self.out_port_labels = list(node_data.get("out_port_labels", ["default"]))
+        self.out_port_priorities = list(node_data.get("out_port_priorities", [0]))
+        self._output_ports = [VirtualPort(self, "out")]
+        self._input_ports = [VirtualPort(self, "in")]
+
+    def name(self):
+        return self._name
+
+    def output_ports(self):
+        return self._output_ports
+
+    def input_ports(self):
+        return self._input_ports
+
+
 class VirtualBranchingNode:
     """Virtual BranchingNode for cross-action playback."""
 
@@ -1946,6 +2074,8 @@ def build_virtual_graph_from_action_data(action_data):
             virtual_nodes[node_id] = VirtualPoseNode(nd)
         elif node_type == "define":
             virtual_nodes[node_id] = VirtualDefineNode(nd)
+        elif node_type == "wait":
+            virtual_nodes[node_id] = VirtualWaitNode(nd)
         elif node_type == "branch":
             virtual_nodes[node_id] = VirtualBranchingNode(nd)
         elif node_type == "jump":
@@ -5006,6 +5136,87 @@ class AddDefineShellDialog(QtWidgets.QDialog):
         self.graph.user_value_session = slots
         # Refresh ValueList if open
         ValueListDialog.refresh_active()
+        self.accept()
+
+
+# =============================================================================
+# WaitEditDialog
+# =============================================================================
+class WaitEditDialog(QtWidgets.QDialog):
+    """WaitNode 編集ダイアログ（Name + Frames）"""
+
+    def __init__(self, graph, wait_node, fps=100, parent=None):
+        super(WaitEditDialog, self).__init__(parent)
+        self.graph = graph
+        self.wait_node = wait_node
+        self._fps = max(1, float(fps))
+        self.setWindowTitle("Wait")
+        self.setModal(True)
+        self.resize(320, 160)
+
+        layout = QtWidgets.QVBoxLayout(self)
+
+        row_name = QtWidgets.QHBoxLayout()
+        lbl_name = QtWidgets.QLabel("Name:")
+        lbl_name.setStyleSheet("color: black;")
+        row_name.addWidget(lbl_name)
+        self._name_edit = QtWidgets.QLineEdit()
+        self._name_edit.setStyleSheet(
+            "QLineEdit { color: black; padding-left: 3px; }"
+        )
+        row_name.addWidget(self._name_edit, 1)
+        layout.addLayout(row_name)
+
+        row_frames = QtWidgets.QHBoxLayout()
+        lbl_frames = QtWidgets.QLabel("Frames:")
+        lbl_frames.setStyleSheet("color: black;")
+        row_frames.addWidget(lbl_frames)
+        self._frames_spin = QtWidgets.QSpinBox()
+        self._frames_spin.setStyleSheet("QSpinBox { color: black; }")
+        self._frames_spin.setMinimum(0)
+        self._frames_spin.setMaximum(99999)
+        self._frames_spin.setFixedWidth(80)
+        row_frames.addWidget(self._frames_spin)
+        self._dur_label = QtWidgets.QLabel("")
+        self._dur_label.setStyleSheet("color: gray;")
+        row_frames.addWidget(self._dur_label)
+        row_frames.addStretch()
+        layout.addLayout(row_frames)
+
+        layout.addStretch()
+
+        bbox = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok
+            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        bbox.accepted.connect(self._on_accept)
+        bbox.rejected.connect(self.reject)
+        layout.addWidget(bbox)
+
+        self._frames_spin.valueChanged.connect(self._update_dur_label)
+        self._load_from_node()
+
+    def _update_dur_label(self, frames):
+        dur = frames / self._fps
+        self._dur_label.setText(f"= {dur:.3f} s")
+
+    def _load_from_node(self):
+        n = self.wait_node
+        self._name_edit.setText(getattr(n, "wait_name", "") or "")
+        frames = max(0, int(getattr(n, "frames", 0)))
+        self._frames_spin.setValue(frames)
+        self._update_dur_label(frames)
+
+    def _on_accept(self):
+        n = self.wait_node
+        name = self._name_edit.text().strip() or "wait"
+        frames = max(0, self._frames_spin.value())
+        dur = frames / self._fps
+        n.wait_name = name
+        n.frames = frames
+        n.duration = dur
+        n.set_name(name)
+        n.refresh_body_text()
         self.accept()
 
 
@@ -9355,6 +9566,7 @@ def export_cartridge(
     boot_action_idx: int | None = None,
     base_action_idx: int | None = None,
     project_code: str = "",
+    joints: tuple[str, ...] | None = None,
 ) -> ExportResult:
     """Write a Logic Cartridge to ``save_path``."""
     items = motion_action_state.get("items", []) if motion_action_state else []
@@ -9486,8 +9698,8 @@ def export_cartridge(
     for i, lines in enumerate(resolved_lines):
         _validate_motion_lines(lines, action_index=i, warnings=all_warnings)
 
-    joints_dict = build_joints_dict(joints_used=None)
-    meridim_map = build_meridim_joint_map()
+    joints_dict = build_joints_dict(joints_used=None, joints=joints)
+    meridim_map = build_meridim_joint_map(joints=joints)
     if not meridim_map:
         raise ValueError("MERIDIM_JOINT_MAP is empty — JOINT_TO_MERIDIM has no canonical joints")
 
@@ -9499,10 +9711,24 @@ def export_cartridge(
     # (truncated) \UXXXXXXXX unicode escape and fails to parse — macOS/Linux
     # paths use forward slashes and never hit this. Normalise to forward
     # slashes so the generated file stays valid Python on every platform.
+    # Also strip absolute path: use relative path from _LME_DIR when possible,
+    # otherwise fall back to filename only to avoid embedding user home dirs.
+    def _sanitize_source_path(p: str) -> str:
+        if not p:
+            return "(unsaved)"
+        abs_p = os.path.abspath(p)
+        try:
+            rel = os.path.relpath(abs_p, _LME_DIR)
+        except ValueError:
+            rel = None
+        if rel and not rel.startswith(".."):
+            return rel.replace("\\", "/")
+        return os.path.basename(abs_p)
+
     header = HEADER_TEMPLATE.format(
         robot_name=str(robot_name).replace("\\", "/"),
         timestamp=timestamp,
-        source_project=(source_project or "(unsaved)").replace("\\", "/"),
+        source_project=_sanitize_source_path(source_project),
         loop_hz=loop_hz,
     )
 
