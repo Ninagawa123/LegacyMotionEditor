@@ -20,8 +20,6 @@ import os
 import traceback
 import ast
 
-_IS_MACOS = (sys.platform == "darwin")
-
 # Qt.py経由で統一（PySide6/PyQt5を自動選択）
 # 環境変数 QT_PREFERRED_BINDING=PySide6 を推奨
 from Qt import QtWidgets, QtCore, QtGui
@@ -109,6 +107,9 @@ from LegacyMotionEditor_Utils import (
     NODE_DEFINE_TITLE_COLOR, NODE_DEFINE_TITLE_BG_COLOR, NODE_DEFINE_PANEL_BG_COLOR,
     NODE_DEFINE_TITLE_HIGHLIGHT_COLOR, NODE_DEFINE_TITLE_BG_HIGHLIGHT_COLOR,
     NODE_DEFINE_PANEL_BG_HIGHLIGHT_COLOR,
+    NODE_WAIT_TITLE_COLOR, NODE_WAIT_TITLE_BG_COLOR, NODE_WAIT_PANEL_BG_COLOR,
+    NODE_WAIT_TITLE_HIGHLIGHT_COLOR, NODE_WAIT_TITLE_BG_HIGHLIGHT_COLOR,
+    NODE_WAIT_PANEL_BG_HIGHLIGHT_COLOR,
     NODE_BRANCH_TITLE_COLOR, NODE_BRANCH_TITLE_BG_COLOR, NODE_BRANCH_PANEL_BG_COLOR,
     NODE_BRANCH_TITLE_HIGHLIGHT_COLOR, NODE_BRANCH_TITLE_BG_HIGHLIGHT_COLOR,
     NODE_BRANCH_PANEL_BG_HIGHLIGHT_COLOR,
@@ -161,7 +162,7 @@ from LegacyMotionEditor_Utils import (
     # Helper functions
     create_label, apply_dark_theme,
     # Virtual node classes (for cross-action playback)
-    VirtualPort, VirtualBaseLinkNode, VirtualPoseNode, VirtualDefineNode,
+    VirtualPort, VirtualBaseLinkNode, VirtualPoseNode, VirtualDefineNode, VirtualWaitNode,
     VirtualBranchingNode, VirtualMixNode, VirtualCommandNode, VirtualJumpNode, build_virtual_graph_from_action_data,
     # Generic UI components
     OffscreenRenderer, ArithmeticDoubleSpinBox, ExportMotionDialog, SingleJointDialog,
@@ -181,7 +182,7 @@ from LegacyMotionEditor_Utils import (
     # Dialog style constants
     _VIEW_MODAL_PANEL_BG, _MAIN_WINDOW_COMBO_TEXT_STYLE,
     # Dialog classes
-    JumpEditDialog, AddDefineShellDialog, BranchingDialog, BranchingShellDialog,
+    JumpEditDialog, AddDefineShellDialog, WaitEditDialog, BranchingDialog, BranchingShellDialog,
     JointSettingsDialog, JointGroupDialog, SettingsDialog,
     MixEditorPanel, MIX_INPUT_SOURCES,
     CommandEditorPanel,
@@ -1415,6 +1416,24 @@ class CustomViewer(NodeViewer):
                         print(f"[Duplicate] Created copy of DefineNode: {new_node.name()}")
                 except Exception as e:
                     print(f"[Duplicate] Error duplicating DefineNode: {e}")
+                    traceback.print_exc()
+            elif isinstance(node, WaitNode):
+                try:
+                    new_node = self._graph.create_node('motion.nodes.WaitNode')
+                    if new_node:
+                        pos = node.pos()
+                        new_node.set_pos(pos[0] + offset_x, pos[1] + offset_y)
+                        new_node.set_color(*NODE_WAIT_PANEL_BG_COLOR)
+                        orig_name = getattr(node, "wait_name", node.name())
+                        new_node.wait_name = self._next_unique_numbered_name(orig_name, taken_names)
+                        new_node.set_name(new_node.wait_name)
+                        new_node.frames = getattr(node, "frames", 0)
+                        new_node.duration = getattr(node, "duration", 0.0)
+                        new_node.out_port_labels = list(getattr(node, "out_port_labels", ["default"]))
+                        new_node.out_port_priorities = list(getattr(node, "out_port_priorities", [0]))
+                        print(f"[Duplicate] Created copy of WaitNode: {new_node.name()}")
+                except Exception as e:
+                    print(f"[Duplicate] Error duplicating WaitNode: {e}")
                     traceback.print_exc()
             elif isinstance(node, BranchingNode):
                 try:
@@ -4419,6 +4438,8 @@ class CustomNodeGraph(NodeGraph):
 
             self.register_node(DefineNode)
             print(f"Registered node type: {DefineNode.NODE_NAME}")
+            self.register_node(WaitNode)
+            print(f"Registered node type: {WaitNode.NODE_NAME}")
             self.register_node(BranchingNode)
             print(f"Registered node type: {BranchingNode.NODE_NAME}")
             self.register_node(CommandNode)
@@ -5181,6 +5202,19 @@ class CustomNodeGraph(NodeGraph):
             dlg.exec()
         except Exception as e:
             print(f"Error showing define editor: {e}")
+            traceback.print_exc()
+
+    def show_wait_editor(self, node, screen_pos=None):
+        """WaitNode の編集モーダルを表示"""
+        try:
+            _dlg_parent = self.widget.window()
+            fps = getattr(self, "_wait_editor_fps", 100)
+            dlg = WaitEditDialog(self, node, fps=fps, parent=_dlg_parent)
+            if screen_pos:
+                dlg.move(screen_pos)
+            dlg.exec()
+        except Exception as e:
+            print(f"Error showing wait editor: {e}")
             traceback.print_exc()
 
     def show_branching_editor(self, node, screen_pos=None):
@@ -6277,6 +6311,106 @@ class DefineNode(BaseNode):
                 self.graph.show_define_editor(self, screen_pos)
             except Exception as e:
                 print(f"[DefineNode] Error on double click: {e}")
+                traceback.print_exc()
+
+
+class WaitNode(BaseNode):
+    """Wait ノード: 関節データを持たず指定フレーム数だけ停止する。"""
+
+    __identifier__ = "motion.nodes"
+    NODE_NAME = "WaitNode"
+    __view__ = CustomNodeItem
+
+    def __init__(self):
+        super(WaitNode, self).__init__(CustomNodeItem)
+        input_port = self.add_input("", color=NODE_POSE_INPUT_PORT_COLOR, multi_input=True)
+        if input_port:
+            try:
+                self.view.inputs[0].setVisible(False)
+            except Exception:
+                pass
+        self.output_count = 0
+        self._add_wait_output("default", 0)
+
+        self.wait_name = "wait"
+        self.frames = 0
+        self.duration = 0.0
+        self.out_port_labels = ["default"]
+        self.out_port_priorities = [0]
+
+        self._original_double_click = self.view.mouseDoubleClickEvent
+        self.view.mouseDoubleClickEvent = self._on_double_click
+
+        QtCore.QTimer.singleShot(20, self._apply_wait_colors)
+
+    def _add_wait_output(self, label="default", priority=0):
+        self.output_count += 1
+        port_name = f"out_{self.output_count}"
+        super(WaitNode, self).add_output(port_name, display_name=False)
+        if not hasattr(self, "out_port_labels"):
+            self.out_port_labels = []
+            self.out_port_priorities = []
+        self.out_port_labels.append(label)
+        self.out_port_priorities.append(priority)
+        return port_name
+
+    def _apply_wait_colors(self):
+        v = getattr(self, "view", None)
+        if not v:
+            return
+        if hasattr(v, "set_title_color"):
+            v.set_title_color(
+                *NODE_WAIT_TITLE_COLOR,
+                highlight_color=NODE_WAIT_TITLE_HIGHLIGHT_COLOR,
+            )
+        if hasattr(v, "_title_bg_color"):
+            v._title_bg_color = QtGui.QColor(*NODE_WAIT_TITLE_BG_COLOR)
+        self.set_color(*NODE_WAIT_PANEL_BG_COLOR)
+        if hasattr(v, "set_normal_colors"):
+            v.set_normal_colors(
+                panel_bg=NODE_WAIT_PANEL_BG_COLOR,
+                input_port=NODE_POSE_INPUT_PORT_COLOR,
+                input_port_border=NODE_POSE_INPUT_PORT_BORDER_COLOR,
+                output_port=NODE_POSE_OUTPUT_PORT_COLOR,
+                output_port_border=NODE_POSE_OUTPUT_PORT_BORDER_COLOR,
+            )
+        if hasattr(v, "set_highlight_colors"):
+            v.set_highlight_colors(
+                panel_bg=NODE_WAIT_PANEL_BG_HIGHLIGHT_COLOR,
+                input_port=NODE_POSE_INPUT_PORT_HIGHLIGHT_COLOR,
+                input_port_border=NODE_POSE_INPUT_PORT_HIGHLIGHT_BORDER_COLOR,
+                output_port=NODE_POSE_OUTPUT_PORT_HIGHLIGHT_COLOR,
+                output_port_border=NODE_POSE_OUTPUT_PORT_HIGHLIGHT_BORDER_COLOR,
+            )
+        for port in self.input_ports():
+            port.color = NODE_POSE_INPUT_PORT_COLOR
+            port.border_color = NODE_POSE_INPUT_PORT_BORDER_COLOR
+        for port in self.output_ports():
+            port.color = NODE_POSE_OUTPUT_PORT_COLOR
+            port.border_color = NODE_POSE_OUTPUT_PORT_BORDER_COLOR
+
+    def refresh_body_text(self):
+        """ノード本体の表示テキストを更新"""
+        try:
+            fps = getattr(self, "_display_fps", 100)
+            dur = self.frames / max(1, float(fps))
+            lines = [self.wait_name, f"{self.frames} f / {dur:.2f} s"]
+            body = "\n".join(lines)
+            if hasattr(self.view, "set_body_text"):
+                self.view.set_body_text(body)
+        except Exception:
+            pass
+
+    def _on_double_click(self, event):
+        if hasattr(self, "graph") and hasattr(self.graph, "show_wait_editor"):
+            try:
+                graph_view = self.graph.viewer()
+                scene_pos = event.scenePos()
+                view_pos = graph_view.mapFromScene(scene_pos)
+                screen_pos = graph_view.mapToGlobal(view_pos)
+                self.graph.show_wait_editor(self, screen_pos)
+            except Exception as e:
+                print(f"[WaitNode] Error on double click: {e}")
                 traceback.print_exc()
 
 
@@ -8329,6 +8463,11 @@ class JointEditorPanel(QtWidgets.QWidget):
 _PLAYBACK_VERBOSE_LOG = False
 
 
+def _playback_log(msg):
+    if _PLAYBACK_VERBOSE_LOG:
+        print(msg)
+
+
 class PlaybackController(QtCore.QObject):
     """モーション再生を管理"""
 
@@ -8516,7 +8655,7 @@ class PlaybackController(QtCore.QObject):
             self._computed_motion_active = True
             action_data, _ = self._action_snapshot(self._effective_action_index())
             self._computed_func_names = self._collect_computed_func_names(action_data)
-            print(f"[Playback] Computed motion runtime initialised, funcs={self._computed_func_names}")
+            _playback_log(f"[Playback] Computed motion runtime initialised, funcs={self._computed_func_names}")
         else:
             self.motion_runtime = None
             self._computed_motion_active = False
@@ -8540,7 +8679,7 @@ class PlaybackController(QtCore.QObject):
         self.is_playing = True
         self.is_paused = False
         self._restart_playback_timer()
-        print(f"[Playback] Started with {len(self.segments)} segments")
+        _playback_log(f"[Playback] Started with {len(self.segments)} segments")
 
     def _restart_playback_timer(self):
         ms = int(getattr(self, "_playback_tick_ms", 33))
@@ -8567,9 +8706,9 @@ class PlaybackController(QtCore.QObject):
         # With virtual nodes, we don't switch the UI, so no need to "return"
         # Just log which action we were virtually playing
         if self._jump_original_action_idx is not None:
-            print(f"[Playback] Finished (started from Action_{self._jump_original_action_idx + 1})")
+            _playback_log(f"[Playback] Finished (started from Action_{self._jump_original_action_idx + 1})")
             if self._virtual_action_idx is not None:
-                print(f"[Playback] Was playing Action_{self._virtual_action_idx + 1} virtually")
+                _playback_log(f"[Playback] Was playing Action_{self._virtual_action_idx + 1} virtually")
 
         # Reset jump state
         self._jump_original_action_idx = None
@@ -8584,7 +8723,7 @@ class PlaybackController(QtCore.QObject):
         self._ik_executing = False
 
         self.playback_finished.emit()
-        print("[Playback] Stopped")
+        _playback_log("[Playback] Stopped")
 
     def play_action_only(self, start_node, graph, robot_model):
         """Action-only mode: play from start_node, stop at any JumpNode."""
@@ -8634,8 +8773,9 @@ class PlaybackController(QtCore.QObject):
         self.is_paused = False
         self._restart_playback_timer()
         self.node_highlight.emit(target_node)
-        print(f"[Playback] Single-node play: {target_node.name()}, "
-              f"frames={frames}, duration_ms={self.segment_duration_ms}")
+        _playback_log(
+            f"[Playback] Single-node play: {target_node.name()}, "
+            f"frames={frames}, duration_ms={self.segment_duration_ms}")
 
     def _build_path(self, start_node):
         """start_nodeからグラフを辿ってノードのリストを構築
@@ -8647,25 +8787,25 @@ class PlaybackController(QtCore.QObject):
         path = [start_node]
         visited = {id(start_node)}
         current = start_node
-        print(f"[Playback] Building path from: {start_node.name()}")
+        _playback_log(f"[Playback] Building path from: {start_node.name()}")
         while True:
             # BranchingNodeに到達したら、ここで一旦停止
             # 再生時に_tickで動的に次のノードを決定する
             if isinstance(current, (BranchingNode, VirtualBranchingNode)):
                 branching_en = getattr(current, "branching_enabled", False)
-                print(f"[Playback] At BranchingNode: {current.name()}, branching_enabled={branching_en}")
+                _playback_log(f"[Playback] At BranchingNode: {current.name()}, branching_enabled={branching_en}")
                 if branching_en:
-                    print(f"[Playback] Stopping at BranchingNode for dynamic evaluation: {current.name()}")
+                    _playback_log(f"[Playback] Stopping at BranchingNode for dynamic evaluation: {current.name()}")
                     break
 
             next_node = self._get_next_node_simple(current)
             if next_node is None:
-                print(f"[Playback] No next node from: {current.name()}")
+                _playback_log(f"[Playback] No next node from: {current.name()}")
                 break
             if id(next_node) in visited:
-                print(f"[Playback] Already visited: {next_node.name()}")
+                _playback_log(f"[Playback] Already visited: {next_node.name()}")
                 break
-            print(f"[Playback] Adding to path: {next_node.name()}")
+            _playback_log(f"[Playback] Adding to path: {next_node.name()}")
             path.append(next_node)
             visited.add(id(next_node))
             current = next_node
@@ -8674,16 +8814,16 @@ class PlaybackController(QtCore.QObject):
             # following whatever is wired to its output (which may lead further
             # through the graph, masking the intended stop point).
             if self._action_only_mode and isinstance(current, (JumpNode, VirtualJumpNode)):
-                print(f"[Playback] Stopping at JumpNode (action-only mode): {current.name()}")
+                _playback_log(f"[Playback] Stopping at JumpNode (action-only mode): {current.name()}")
                 break
-        print(f"[Playback] Built path with {len(path)} nodes: {[n.name() for n in path]}")
+        _playback_log(f"[Playback] Built path with {len(path)} nodes: {[n.name() for n in path]}")
         return path
 
     def _get_next_node_simple(self, node):
         """パス構築用：条件評価せずに最初の接続先を返す。Supports virtual nodes."""
         # Check if this is a virtual node
         is_virtual = isinstance(node, (
-            VirtualBaseLinkNode, VirtualPoseNode, VirtualDefineNode,
+            VirtualBaseLinkNode, VirtualPoseNode, VirtualDefineNode, VirtualWaitNode,
             VirtualBranchingNode, VirtualJumpNode, VirtualMixNode
         ))
         if is_virtual:
@@ -8779,7 +8919,7 @@ class PlaybackController(QtCore.QObject):
         if _is_pad_register(left_name) or _is_pad_register(right_name):
             all_zero = all(v == 0 for v in PAD_REGISTER_VALUES.values())
             if all_zero:
-                print("[Branch] WARNING: All Pad values are 0 — open Pad Monitor and enable 'Use PC Pad'.")
+                _playback_log("[Branch] WARNING: All Pad values are 0 — open Pad Monitor and enable 'Use PC Pad'.")
 
         left_val = self._resolve_branch_value(left_name)
         right_val = self._resolve_branch_value(right_name)
@@ -8823,7 +8963,7 @@ class PlaybackController(QtCore.QObject):
 
     def _jump_to_action(self, target_action_idx, jump_type="action"):
         """Cross-action jump helper. Returns StartNode of target action or None."""
-        print(f"[Playback] JumpNode: jumping to Action_{target_action_idx + 1} (type={jump_type})")
+        _playback_log(f"[Playback] JumpNode: jumping to Action_{target_action_idx + 1} (type={jump_type})")
 
         # Determine current effective action index (virtual takes precedence)
         effective_current_idx = self._virtual_action_idx
@@ -8834,18 +8974,18 @@ class PlaybackController(QtCore.QObject):
 
         # Same-action loop: jump to start of current action
         if effective_current_idx is not None and target_action_idx == effective_current_idx:
-            print(f"[Playback] JumpNode: same-action loop for Action_{target_action_idx + 1}")
+            _playback_log(f"[Playback] JumpNode: same-action loop for Action_{target_action_idx + 1}")
             self._visited_nodes.clear()
             if self._virtual_action_idx is None:
                 for n in self.graph.all_nodes():
                     if isinstance(n, BaseLinkNode):
-                        print(f"[Playback] JumpNode: returning to real graph StartNode")
+                        _playback_log("[Playback] JumpNode: returning to real graph StartNode")
                         return n
-                print(f"[Playback] JumpNode: no BaseLinkNode found in real graph")
+                _playback_log("[Playback] JumpNode: no BaseLinkNode found in real graph")
             elif self._jump_callback:
                 start_node = self._jump_callback(target_action_idx, save_current=False)
                 if start_node:
-                    print(f"[Playback] JumpNode: rebuilt virtual graph for same-action loop")
+                    _playback_log("[Playback] JumpNode: rebuilt virtual graph for same-action loop")
                     return start_node
             return None
 
@@ -8854,11 +8994,11 @@ class PlaybackController(QtCore.QObject):
                 mas = getattr(self.graph, "motion_action_state", None)
                 if mas:
                     self._jump_original_action_idx = mas.get("current", 0)
-                    print(f"[Playback] JumpNode: saved original action index {self._jump_original_action_idx}")
+                    _playback_log(f"[Playback] JumpNode: saved original action index {self._jump_original_action_idx}")
 
             start_node = self._jump_callback(target_action_idx, save_current=True)
             if start_node:
-                print(f"[Playback] JumpNode: got StartNode from Action_{target_action_idx + 1}")
+                _playback_log(f"[Playback] JumpNode: got StartNode from Action_{target_action_idx + 1}")
                 self._visited_nodes.clear()
                 # Update computed motion state for the new action
                 new_data, _ = self._action_snapshot(target_action_idx)
@@ -8873,16 +9013,16 @@ class PlaybackController(QtCore.QObject):
                             project_code = getattr(self.graph, "project_code", "") or ""
                             self.motion_runtime = LMEMotionRuntime()
                             self.motion_runtime.reset(project_code)
-                        print(f"[Playback] Computed motion continues in new action: {new_func_names}")
+                        _playback_log(f"[Playback] Computed motion continues in new action: {new_func_names}")
                     else:
                         self._computed_func_names = []
                         self._computed_motion_active = False
                         self._ik_executing = False
-                        print(f"[Playback] Computed motion OFF (new action has no function JumpNodes)")
+                        _playback_log("[Playback] Computed motion OFF (new action has no function JumpNodes)")
                 return start_node
-            print(f"[Playback] JumpNode: failed to get StartNode from Action_{target_action_idx + 1}")
+            _playback_log(f"[Playback] JumpNode: failed to get StartNode from Action_{target_action_idx + 1}")
         else:
-            print(f"[Playback] JumpNode: no jump callback set, cannot jump to other action")
+            _playback_log("[Playback] JumpNode: no jump callback set, cannot jump to other action")
         return None
 
     def _get_next_node(self, node):
@@ -8912,26 +9052,24 @@ class PlaybackController(QtCore.QObject):
                 if connected:
                     target_node = connected[0].node()
                     is_valid_target = isinstance(target_node, (
-                        PoseNode, DefineNode, BranchingNode, JumpNode, MixNode,
-                        VirtualPoseNode, VirtualDefineNode, VirtualBranchingNode, VirtualJumpNode, VirtualMixNode
+                        PoseNode, DefineNode, WaitNode, BranchingNode, JumpNode, MixNode,
+                        VirtualPoseNode, VirtualDefineNode, VirtualWaitNode, VirtualBranchingNode, VirtualJumpNode, VirtualMixNode
                     ))
                     if is_valid_target:
-                        if _PLAYBACK_VERBOSE_LOG:
-                            branch_name = "To (red)" if condition_result else "Otherwise (blue)"
-                            if swapped:
-                                branch_name = "Otherwise (blue)" if condition_result else "To (red)"
-                            print(f"[Playback] _get_next_node (Branch -> {branch_name}): {node.name()} -> {target_node.name()}")
+                        branch_name = "To (red)" if condition_result else "Otherwise (blue)"
+                        if swapped:
+                            branch_name = "Otherwise (blue)" if condition_result else "To (red)"
+                        _playback_log(f"[Playback] _get_next_node (Branch -> {branch_name}): {node.name()} -> {target_node.name()}")
                         self._set_ik_gate_for_target(target_node)
                         return target_node
 
             # Fallback: BranchingNode has no valid target from selected port
-            if _PLAYBACK_VERBOSE_LOG:
-                print(f"[Playback] _get_next_node (Branch): {node.name()} has no valid target from selected port")
+            _playback_log(f"[Playback] _get_next_node (Branch): {node.name()} has no valid target from selected port")
             return None
 
         # Check if this is a virtual node - use virtual port connections
         is_virtual = isinstance(node, (
-            VirtualBaseLinkNode, VirtualPoseNode, VirtualDefineNode,
+            VirtualBaseLinkNode, VirtualPoseNode, VirtualDefineNode, VirtualWaitNode,
             VirtualBranchingNode, VirtualJumpNode, VirtualMixNode
         ))
         if is_virtual:
@@ -8941,26 +9079,20 @@ class PlaybackController(QtCore.QObject):
                 if connected:
                     target_node = connected[0].node()
                     if target_node:
-                        if _PLAYBACK_VERBOSE_LOG:
-                            print(f"[Playback] _get_next_node (virtual): {node.name()} -> {target_node.name()}")
+                        _playback_log(f"[Playback] _get_next_node (virtual): {node.name()} -> {target_node.name()}")
                         return target_node
-            if _PLAYBACK_VERBOSE_LOG:
-                print(f"[Playback] _get_next_node (virtual): {node.name()} has no connections")
+            _playback_log(f"[Playback] _get_next_node (virtual): {node.name()} has no connections")
             return None
 
         # Default behavior: use _sorted_output_connections (only for real non-BranchingNode)
         connected_nodes = _sorted_output_connections(node)
         if connected_nodes:
             target = connected_nodes[0]
-            if _PLAYBACK_VERBOSE_LOG:
-                # Debug: show all connections for PoseNode
-                if isinstance(node, PoseNode) and len(connected_nodes) > 0:
-                    all_names = [n.name() for n in connected_nodes]
-                    print(f"[Playback] {node.name()} has connections to: {all_names}")
-                print(f"[Playback] _get_next_node: {node.name()} -> {target.name()}")
+            if isinstance(node, PoseNode) and len(connected_nodes) > 0:
+                _playback_log(f"[Playback] {node.name()} has connections to: {[n.name() for n in connected_nodes]}")
+            _playback_log(f"[Playback] _get_next_node: {node.name()} -> {target.name()}")
             return target
-        if _PLAYBACK_VERBOSE_LOG:
-            print(f"[Playback] _get_next_node: {node.name()} has no valid connections")
+        _playback_log(f"[Playback] _get_next_node: {node.name()} has no valid connections")
         return None
 
     def _resync_playback_tick_clock(self):
@@ -9038,6 +9170,7 @@ class PlaybackController(QtCore.QObject):
                 self.prev_angles = dict(self._speed_limited_angles) if self._speed_limited_angles else {}
         elif isinstance(prev_node, (BranchingNode, VirtualBranchingNode,
                                     DefineNode, VirtualDefineNode,
+                                    WaitNode, VirtualWaitNode,
                                     JumpNode, VirtualJumpNode,
                                     MixNode, VirtualMixNode,
                                     CommandNode, VirtualCommandNode)):
@@ -9050,6 +9183,9 @@ class PlaybackController(QtCore.QObject):
             self.next_angles = dict(next_node.angles_deg)
             self.next_easings = dict(getattr(next_node, 'joint_easings', {}))
         elif isinstance(next_node, (DefineNode, VirtualDefineNode)):
+            self.next_angles = dict(self.prev_angles)
+            self.next_easings = {}
+        elif isinstance(next_node, (WaitNode, VirtualWaitNode)):
             self.next_angles = dict(self.prev_angles)
             self.next_easings = {}
         elif isinstance(next_node, (BranchingNode, VirtualBranchingNode)):
@@ -9095,6 +9231,15 @@ class PlaybackController(QtCore.QObject):
             self._playback_tick_ms = _tick_ms
         elif isinstance(next_node, (DefineNode, VirtualDefineNode)):
             self.segment_duration_ms = 1  # instant transition
+            self._playback_tick_ms = DISPLAY_REFRESH_MS
+        elif isinstance(next_node, (WaitNode, VirtualWaitNode)):
+            frames = int(getattr(next_node, 'frames', 0))
+            if frames <= 0:
+                self.segment_duration_ms = 1  # 0 frames → instant pass-through
+            else:
+                fps = max(1, float(self.fps))
+                dur_sec = frames / fps
+                self.segment_duration_ms = max(1, int(round(dur_sec * 1000.0)))
             self._playback_tick_ms = DISPLAY_REFRESH_MS
         elif isinstance(next_node, (BranchingNode, VirtualBranchingNode)):
             self.segment_duration_ms = 1  # instant transition
@@ -9143,7 +9288,7 @@ class PlaybackController(QtCore.QObject):
         self.node_highlight.emit(next_node)
         if self.is_playing and not self.is_paused:
             self._restart_playback_timer()
-        print(
+        _playback_log(
             f"[Playback] Segment {idx}: {prev_node.name()} -> {next_node.name()}, "
             f"duration_ms={self.segment_duration_ms}, tick_ms={self._playback_tick_ms}"
         )
@@ -9172,50 +9317,10 @@ class PlaybackController(QtCore.QObject):
             and self.motion_runtime is not None and self._computed_func_names
         )
 
-        # Computed motion: call IK every tick; sub-step so walk.t tracks wall-clock dt.
-        # On non-macOS this is instead driven by a background thread (see main(),
-        # _computed_ik_worker) so it can run at its intended rate without competing
-        # with the GUI thread's rendering — this inline path stays for macOS only,
-        # where the plain same-thread approach already performs fine.
-        if _IS_MACOS and _computed_active_now:
-            from LegacyMotionEditor_Utils import PAD_REGISTER_VALUES
-            project_code = getattr(self.graph, "project_code", "") or ""
-            try:
-                _loop_hz = float((getattr(self.motion_runtime, "_ns", None) or {}).get("LOOP_HZ", 100) or 100)
-            except Exception:
-                _loop_hz = 100.0
-            # dt_sec is already clamped to <=0.5s above, so this is naturally bounded
-            # (e.g. <=50 substeps at LOOP_HZ=100) without an extra low cap. A previous
-            # hardcoded cap of 5 made computed/IK-driven walking motions fall
-            # permanently behind wall-clock time whenever a tick was delayed beyond
-            # 5/LOOP_HZ seconds — harmless on machines with very steady ~10ms tick
-            # delivery, but a persistent slow-motion effect on machines (e.g. some
-            # Ubuntu setups) where GUI-thread work occasionally delays ticks further.
-            # Pose-to-pose (non-computed) playback doesn't have this issue since its
-            # progress `t` is derived directly from wall-clock elapsed time, not tick
-            # count.
-            _substeps = max(1, int(round(dt_sec * max(1.0, _loop_hz))))
-            # Safety net: if call_function() itself is slow (e.g. heavier ProjectCode,
-            # slower machine), looping the full _substeps count here can make this
-            # single _tick() call take longer, which delays the *next* timer tick,
-            # which raises dt_sec further next time, which raises _substeps further —
-            # a runaway feedback loop that looks like the console freezing and the
-            # motion going into slow motion, worse than plain tick jitter would. Cap
-            # by wall-clock time actually spent, not just step count, so one slow
-            # tick can never compound into a worse one.
-            _substep_deadline = self.elapsed_timer.elapsed() + max(1, int(round(dt_sec * 1000.0)))
-            _angles = None
-            for _ in range(_substeps):
-                for _fn in self._computed_func_names:
-                    if self.motion_runtime.call_function(_fn, project_code, PAD_REGISTER_VALUES):
-                        _angles = self.motion_runtime.get_angles_dict()
-                if self.elapsed_timer.elapsed() >= _substep_deadline:
-                    break
-            if _angles:
-                self.next_angles.update(_angles)
-                self.prev_angles.update(_angles)
-
-        if _IS_MACOS or not _computed_active_now:
+        # Computed motion IK runs on a background thread (_computed_ik_worker in
+        # main()) at LOOP_HZ so it is not delayed by GUI-thread rendering.
+        # _tick() only interpolates / emits pose_changed for pose-to-pose playback.
+        if not _computed_active_now:
             # 角度を補間（理想値）
             interp_angles = {}
             all_joints = set(list(self.prev_angles.keys()) + list(self.next_angles.keys()))
@@ -9227,7 +9332,9 @@ class PlaybackController(QtCore.QObject):
 
             # Always clamp to joint max_speed. pose_changed → Valkey → MuJoCoStudio.
             limited_angles = self._apply_joint_speed_limits(interp_angles, dt_sec)
-            self.pose_changed.emit(limited_angles)
+            # WaitNode holds position; skip Valkey write to avoid redundant updates.
+            if not isinstance(current_next, (WaitNode, VirtualWaitNode)):
+                self.pose_changed.emit(limited_angles)
         else:
             # Angle output for this tick is owned by the background IK worker
             # instead (applies directly to the model + Valkey, and keeps
@@ -9266,7 +9373,7 @@ class PlaybackController(QtCore.QObject):
                 # into another Action). Covers JumpNodes reached via dynamic
                 # BranchingNode evaluation, in addition to the _build_path stop.
                 if self._action_only_mode and isinstance(last_next, (JumpNode, VirtualJumpNode)):
-                    print(f"[Playback] Stopping at JumpNode (action-only mode): {last_next.name()}")
+                    _playback_log(f"[Playback] Stopping at JumpNode (action-only mode): {last_next.name()}")
                     self.stop()
                     return
 
@@ -9274,14 +9381,14 @@ class PlaybackController(QtCore.QObject):
                 # Check for both real and virtual node types (including BaseLinkNode for cross-action jumps)
                 is_valid_further = further and isinstance(
                     further, (
-                        PoseNode, DefineNode, BranchingNode, JumpNode, BaseLinkNode, MixNode, CommandNode,
-                        VirtualPoseNode, VirtualDefineNode, VirtualBranchingNode, VirtualJumpNode, VirtualBaseLinkNode, VirtualMixNode, VirtualCommandNode
+                        PoseNode, DefineNode, WaitNode, BranchingNode, JumpNode, BaseLinkNode, MixNode, CommandNode,
+                        VirtualPoseNode, VirtualDefineNode, VirtualWaitNode, VirtualBranchingNode, VirtualJumpNode, VirtualBaseLinkNode, VirtualMixNode, VirtualCommandNode
                     )
                 )
                 if is_valid_further:
                     # Check for cycles - allow loops by resetting visited nodes
                     if id(further) in self._visited_nodes:
-                        print(f"[Playback] Loop detected at: {further.name()}, continuing loop")
+                        _playback_log(f"[Playback] Loop detected at: {further.name()}, continuing loop")
                         # Reset visited nodes to allow loop, but keep the target
                         self._visited_nodes.clear()
                         self._visited_nodes.add(id(further))
@@ -9590,6 +9697,7 @@ def build_motion_data_dict(urdf_path, robot_model, graph, playback_ctrl, joint_e
     """現在のグラフ・ジョイント・再生設定を辞書にまとめる（ファイル保存・アクション切替用）。"""
     pose_nodes = [n for n in graph.all_nodes() if isinstance(n, PoseNode)]
     define_nodes = [n for n in graph.all_nodes() if isinstance(n, DefineNode)]
+    wait_nodes = [n for n in graph.all_nodes() if isinstance(n, WaitNode)]
     branch_nodes = [n for n in graph.all_nodes() if isinstance(n, BranchingNode)]
     mix_nodes = [n for n in graph.all_nodes() if isinstance(n, MixNode)]
     command_nodes = [n for n in graph.all_nodes() if isinstance(n, CommandNode)]
@@ -9599,6 +9707,8 @@ def build_motion_data_dict(urdf_path, robot_model, graph, playback_ctrl, joint_e
         node_id_map[id(node)] = f"pose_{i}"
     for i, node in enumerate(define_nodes):
         node_id_map[id(node)] = f"define_{i}"
+    for i, node in enumerate(wait_nodes):
+        node_id_map[id(node)] = f"wait_{i}"
     for i, node in enumerate(branch_nodes):
         node_id_map[id(node)] = f"branch_{i}"
     for i, node in enumerate(mix_nodes):
@@ -9653,6 +9763,19 @@ def build_motion_data_dict(urdf_path, robot_model, graph, playback_ctrl, joint_e
             "define_kind": getattr(node, "define_kind", "literal"),
             "define_literal": getattr(node, "define_literal", 0),
             "define_register_name": getattr(node, "define_register_name", ""),
+        })
+    for node in wait_nodes:
+        nid = node_id_map[id(node)]
+        nodes_data.append({
+            "id": nid,
+            "node_type": "wait",
+            "name": getattr(node, "wait_name", node.name()),
+            "frames": int(getattr(node, "frames", 0)),
+            "duration": float(getattr(node, "duration", 0.0)),
+            "pos_x": node.pos()[0] if isinstance(node.pos(), (list, tuple)) else node.pos().x() if hasattr(node.pos(), 'x') else 0,
+            "pos_y": node.pos()[1] if isinstance(node.pos(), (list, tuple)) else node.pos().y() if hasattr(node.pos(), 'y') else 0,
+            "out_port_labels": list(getattr(node, "out_port_labels", ["default"])),
+            "out_port_priorities": list(getattr(node, "out_port_priorities", [0])),
         })
     for node in branch_nodes:
         nid = node_id_map[id(node)]
@@ -9753,9 +9876,9 @@ def build_motion_data_dict(urdf_path, robot_model, graph, playback_ctrl, joint_e
 
         return valid_connections
 
-    # Capture edges from PoseNode, DefineNode, BranchingNode, MixNode, CommandNode, JumpNode
+    # Capture edges from PoseNode, DefineNode, WaitNode, BranchingNode, MixNode, CommandNode, JumpNode
     for node in graph.all_nodes():
-        if not isinstance(node, (PoseNode, DefineNode, BranchingNode, MixNode, CommandNode, JumpNode)):
+        if not isinstance(node, (PoseNode, DefineNode, WaitNode, BranchingNode, MixNode, CommandNode, JumpNode)):
             continue
         src_id = node_id_map.get(id(node))
         if not src_id:
@@ -9765,7 +9888,7 @@ def build_motion_data_dict(urdf_path, robot_model, graph, playback_ctrl, joint_e
             for connected_port in valid_connections:
                 target = connected_port.node()
                 if isinstance(
-                    target, (PoseNode, DefineNode, BranchingNode, MixNode, CommandNode, JumpNode)
+                    target, (PoseNode, DefineNode, WaitNode, BranchingNode, MixNode, CommandNode, JumpNode)
                 ) and id(target) in node_id_map:
                     label = node.out_port_labels[port_idx] if port_idx < len(node.out_port_labels) else ""
                     priority = node.out_port_priorities[port_idx] if port_idx < len(node.out_port_priorities) else 0
@@ -9786,7 +9909,7 @@ def build_motion_data_dict(urdf_path, robot_model, graph, playback_ctrl, joint_e
             for connected_port in valid_connections:
                 target = connected_port.node()
                 if isinstance(
-                    target, (PoseNode, DefineNode, BranchingNode, MixNode, CommandNode, JumpNode)
+                    target, (PoseNode, DefineNode, WaitNode, BranchingNode, MixNode, CommandNode, JumpNode)
                 ) and id(target) in node_id_map:
                     edges_data.append({
                         "from": "start",
@@ -9901,6 +10024,17 @@ def _write_action_data_to_xml(action_elem, data):
             node_elem.set("define_kind", node_data.get("define_kind", "literal"))
             node_elem.set("define_literal", str(node_data.get("define_literal", 0)))
             node_elem.set("define_register_name", node_data.get("define_register_name", ""))
+
+        elif node_data.get("node_type") == "wait":
+            node_elem.set("frames", str(node_data.get("frames", 0)))
+            node_elem.set("duration", str(node_data.get("duration", 0.0)))
+            ports_elem = ET.SubElement(node_elem, "OutputPorts")
+            labels = node_data.get("out_port_labels", ["default"])
+            priorities = node_data.get("out_port_priorities", [0])
+            for i, label in enumerate(labels):
+                p_elem = ET.SubElement(ports_elem, "Port")
+                p_elem.set("label", label)
+                p_elem.set("priority", str(priorities[i] if i < len(priorities) else 0))
 
         elif node_data.get("node_type") == "branch":
             node_elem.set("branching_enabled", str(node_data.get("branching_enabled", False)))
@@ -10249,6 +10383,18 @@ def _parse_action_data_from_xml(action_elem, global_data):
                 node_data["define_kind"] = node_elem.get("define_kind", "literal")
                 node_data["define_literal"] = int(node_elem.get("define_literal", 0))
                 node_data["define_register_name"] = node_elem.get("define_register_name", "")
+
+            elif node_type == "wait":
+                node_data["frames"] = int(node_elem.get("frames", 0))
+                node_data["duration"] = float(node_elem.get("duration", 0.0))
+                labels, priorities = [], []
+                ports_elem = node_elem.find("OutputPorts")
+                if ports_elem is not None:
+                    for p_elem in ports_elem.findall("Port"):
+                        labels.append(p_elem.get("label", ""))
+                        priorities.append(int(p_elem.get("priority", 0)))
+                node_data["out_port_labels"] = labels if labels else ["default"]
+                node_data["out_port_priorities"] = priorities if priorities else [0]
 
             elif node_type == "branch":
                 node_data["branching_enabled"] = node_elem.get("branching_enabled", "False").lower() == "true"
@@ -10647,7 +10793,7 @@ def _sorted_output_connections(node):
 
         for conn_idx, connected_port in enumerate(valid_connections):
             target = connected_port.node()
-            if isinstance(target, (PoseNode, DefineNode, BranchingNode, MixNode, CommandNode, JumpNode)):
+            if isinstance(target, (PoseNode, DefineNode, WaitNode, BranchingNode, MixNode, CommandNode, JumpNode)):
                 connections.append((priority, port_idx, conn_idx, target))
 
     # Sort by priority, port_idx, connection_idx
@@ -10668,7 +10814,7 @@ def cleanup_orphaned_connections(graph):
         return 0
 
     removed_count = 0
-    node_types = (PoseNode, DefineNode, BranchingNode, MixNode, CommandNode, JumpNode, BaseLinkNode)
+    node_types = (PoseNode, DefineNode, WaitNode, BranchingNode, MixNode, CommandNode, JumpNode, BaseLinkNode)
 
     for node in graph.all_nodes():
         if not isinstance(node, node_types):
@@ -10758,7 +10904,7 @@ def build_motion_export_csv(graph, robot_model):
     joint_order = list(robot_model.joint_order) if robot_model else []
     lines = []
     for node in nodes:
-        if isinstance(node, (DefineNode, BranchingNode, JumpNode)):
+        if isinstance(node, (DefineNode, WaitNode, BranchingNode, JumpNode)):
             continue
         row = [
             _csv_escape(getattr(node, "pose_name", node.name())),
@@ -10882,9 +11028,9 @@ def load_motion_data(data, graph, stl_viewer, joint_editor, playback_ctrl,
                     stl_viewer.reset_camera()
                     stl_viewer.safe_render()
 
-        # 既存の Pose / Define / Branch / Jump / Mix / Command ノードを削除
+        # 既存の Pose / Define / Wait / Branch / Jump / Mix / Command ノードを削除
         for n in list(graph.all_nodes()):
-            if isinstance(n, (PoseNode, DefineNode, BranchingNode, JumpNode, MixNode, CommandNode)):
+            if isinstance(n, (PoseNode, DefineNode, WaitNode, BranchingNode, JumpNode, MixNode, CommandNode)):
                 graph.remove_node(n)
 
         # Clean up orphaned pipes after node deletion
@@ -10926,6 +11072,23 @@ def load_motion_data(data, graph, stl_viewer, joint_editor, playback_ctrl,
                 except (TypeError, ValueError):
                     node.define_literal = 0
                 node.define_register_name = nd.get("define_register_name", "") or ""
+                node_map[nid] = node
+                continue
+            if ntype == "wait":
+                node = graph.create_node(
+                    "motion.nodes.WaitNode",
+                    name=nd.get("name", "wait"),
+                    pos=QtCore.QPointF(nd.get("pos_x", 0), nd.get("pos_y", 0)),
+                    skip_auto_position=True,
+                )
+                node.wait_name = nd.get("name", "wait")
+                node.set_name(node.wait_name)
+                node.frames = int(nd.get("frames", 0))
+                node.duration = float(nd.get("duration", 0.0))
+                labels = nd.get("out_port_labels", ["default"])
+                priorities = nd.get("out_port_priorities", [0])
+                node.out_port_labels = list(labels)
+                node.out_port_priorities = list(priorities)
                 node_map[nid] = node
                 continue
             if ntype == "branch":
@@ -11522,7 +11685,7 @@ if __name__ == '__main__':
         _BUTTON_DISPLAY = {}  # ボタン表示名はキー名をそのまま使用
         # Define/Command/Mix をまとめた QComboBox のキー
         _ADD_SUB_KEY = "Add Define"
-        _ADD_SUB_ITEMS = ["Define", "Command", "Mix"]
+        _ADD_SUB_ITEMS = ["Wait", "Define", "Command", "Mix"]
 
         use_pc_pad_checkbox = [None]  # Padボタン横のチェックボックス
         for button_text in buttons.keys():
@@ -12516,6 +12679,43 @@ if __name__ == '__main__':
                 print(f"[Motion] Error adding DefineNode: {e}")
                 traceback.print_exc()
 
+        def on_add_wait_node():
+            """WaitNode を追加"""
+            push_undo()
+            try:
+                pos = QtCore.QPointF(0, 0)
+                selected_nodes = graph.selected_nodes()
+                if selected_nodes:
+                    selected_node = selected_nodes[0]
+                    selected_pos = selected_node.pos()
+                    if isinstance(selected_pos, (list, tuple)):
+                        base_x, base_y = selected_pos[0], selected_pos[1]
+                    elif hasattr(selected_pos, 'x') and hasattr(selected_pos, 'y'):
+                        base_x, base_y = selected_pos.x(), selected_pos.y()
+                    else:
+                        base_x, base_y = 0, 0
+                    pos = QtCore.QPointF(base_x + get_node_offset_x(), base_y + get_node_offset_y())
+
+                idx = len([n for n in graph.all_nodes() if isinstance(n, WaitNode)])
+                new_node = graph.create_node(
+                    'motion.nodes.WaitNode',
+                    name=f'wait_{idx}',
+                    pos=pos,
+                    skip_auto_position=True
+                )
+                new_node.wait_name = f'wait_{idx}'
+                new_node.set_name(new_node.wait_name)
+                new_node.set_pos(pos.x(), pos.y())
+                new_node.set_color(*NODE_WAIT_PANEL_BG_COLOR)
+                # Pass fps so dialog and body text compute duration correctly
+                fps = getattr(playback_ctrl, 'fps', 100) if playback_ctrl else 100
+                new_node._display_fps = fps
+                graph._wait_editor_fps = fps
+                print(f"[Motion] Added WaitNode: {new_node.name()}")
+            except Exception as e:
+                print(f"[Motion] Error adding WaitNode: {e}")
+                traceback.print_exc()
+
         def on_joint_angles_changed(angles):
             """Joint Editor値変更時"""
             rm = motion_state['robot_model']
@@ -12636,7 +12836,7 @@ if __name__ == '__main__':
 
         def _find_selected_node():
             for node in graph.selected_nodes():
-                if isinstance(node, (PoseNode, DefineNode, BranchingNode, JumpNode,
+                if isinstance(node, (PoseNode, DefineNode, WaitNode, BranchingNode, JumpNode,
                                      BaseLinkNode, MixNode, CommandNode)):
                     return node
             return None
@@ -12798,7 +12998,7 @@ if __name__ == '__main__':
                     for port in out_ports:
                         for cp in port.connected_ports():
                             target = cp.node()
-                            if isinstance(target, (PoseNode, DefineNode, BranchingNode, MixNode, CommandNode, JumpNode)):
+                            if isinstance(target, (PoseNode, DefineNode, WaitNode, BranchingNode, MixNode, CommandNode, JumpNode)):
                                 all_connected.append((port, cp, target))
 
                     if len(all_connected) > 1:
@@ -12864,20 +13064,13 @@ if __name__ == '__main__':
                 traceback.print_exc()
 
         # Computed-motion (walking) ticks at up to LOOP_HZ (~100Hz) so Valkey/servo
-        # writes stay precise, but the offscreen VTK->QLabel render (OffscreenRenderer,
-        # "for macOS compatibility") is comparatively expensive per call — it reads
-        # the framebuffer back, reshapes it in numpy, converts to QImage/QPixmap, and
-        # scales it. Calling it synchronously inside PlaybackController._tick() (even
-        # throttled) still occasionally makes a tick take long enough that the control
-        # loop falls behind wall-clock time faster than its catch-up math (clamped to
-        # a max 0.5s step) can compensate — visible as the motion (and any physics
-        # relying on steady control timing, e.g. a walk gait) running slow/unstable.
-        # Worse on machines where this readback+CPU-composite path is slower (seen on
-        # some Ubuntu/Mesa setups; not observed on macOS). Since this is meant to
-        # preview a simulator, the control timing needs to actually be real-time, not
-        # just "fast enough" — a same-thread QTimer for rendering still isn't enough,
-        # since Qt's event loop is single-threaded and the render still blocks
-        # whatever else wants to run during its ~15ms.
+        # writes stay precise, but the offscreen VTK->QLabel render (OffscreenRenderer)
+        # is comparatively expensive per call — it reads the framebuffer back, reshapes
+        # it in numpy, converts to QImage/QPixmap, and scales it. Calling IK
+        # synchronously inside PlaybackController._tick() still occasionally makes a
+        # tick take long enough that the control loop falls behind wall-clock time.
+        # A same-thread QTimer for rendering is not enough: Qt's event loop is
+        # single-threaded and the render still blocks whatever else wants to run.
         # Tried moving the render itself to a background thread with the GL context
         # handed over via MakeCurrent() under a lock — VTK's OpenGL2 backend does not
         # tolerate that (vtkOpenGLVertexArrayObject errors, corrupted rendering), so
@@ -12886,10 +13079,9 @@ if __name__ == '__main__':
         # objects (CPU-side data, no GL calls), so it's safe to call off the GUI
         # thread as long as it can't run at the same time as a render reading that
         # same data — guarded here by stl_viewer._vtk_lock, with the GL context never
-        # leaving the GUI thread. See PlaybackController._tick()'s _IS_MACOS branches
-        # for the corresponding split (macOS keeps everything inline, unchanged).
+        # leaving the GUI thread. Same split on macOS and Ubuntu.
         def on_playback_pose(angles):
-            """再生中の姿勢更新（Poseベース再生、およびmacOSのcomputed motion用）"""
+            """再生中の姿勢更新（Poseベース再生。計算モーションは IK ワーカー側）"""
             rm = motion_state['robot_model']
             fk_angles = joint_editor.get_angles_for_3d(angles)
             if rm:
@@ -12905,60 +13097,58 @@ if __name__ == '__main__':
         playback_render_qtimer.timeout.connect(_render_during_playback)
         playback_render_qtimer.start(50)  # ~20 Hz visual refresh
 
-        if not _IS_MACOS:
-            def _computed_ik_worker():
-                """Runs computed-motion (walking) IK on its own precise loop,
-                independent of the GUI thread, so it isn't slowed down by
-                rendering or any other GUI-thread work. Applies angles directly
-                to the model + Valkey — see PlaybackController._tick()'s
-                _IS_MACOS check, which skips its own inline computed-motion
-                handling on this platform so the two paths don't fight over the
-                same state."""
-                from LegacyMotionEditor_Utils import PAD_REGISTER_VALUES
-                while True:
-                    active = (
-                        playback_ctrl.is_playing
-                        and playback_ctrl._computed_motion_active
-                        and playback_ctrl._ik_executing
-                        and playback_ctrl.motion_runtime is not None
-                        and playback_ctrl._computed_func_names
-                    )
-                    if not active:
-                        time.sleep(0.02)
-                        continue
+        def _computed_ik_worker():
+            """Runs computed-motion (walking) IK on its own precise loop,
+            independent of the GUI thread, so it isn't slowed down by
+            rendering or any other GUI-thread work. Applies angles directly
+            to the model + Valkey. PlaybackController._tick() skips its own
+            computed-motion handling while this worker is active so the two
+            paths don't fight over the same state."""
+            from LegacyMotionEditor_Utils import PAD_REGISTER_VALUES
+            while True:
+                active = (
+                    playback_ctrl.is_playing
+                    and playback_ctrl._computed_motion_active
+                    and playback_ctrl._ik_executing
+                    and playback_ctrl.motion_runtime is not None
+                    and playback_ctrl._computed_func_names
+                )
+                if not active:
+                    time.sleep(0.02)
+                    continue
 
-                    t0 = playback_ctrl.elapsed_timer.elapsed()
-                    project_code = getattr(playback_ctrl.graph, "project_code", "") or ""
-                    try:
-                        loop_hz = float(
-                            (getattr(playback_ctrl.motion_runtime, "_ns", None) or {})
-                            .get("LOOP_HZ", 100) or 100)
-                    except Exception:
-                        loop_hz = 100.0
+                t0 = playback_ctrl.elapsed_timer.elapsed()
+                project_code = getattr(playback_ctrl.graph, "project_code", "") or ""
+                try:
+                    loop_hz = float(
+                        (getattr(playback_ctrl.motion_runtime, "_ns", None) or {})
+                        .get("LOOP_HZ", 100) or 100)
+                except Exception:
+                    loop_hz = 100.0
 
-                    angles = None
-                    for fn in list(playback_ctrl._computed_func_names):
-                        if playback_ctrl.motion_runtime.call_function(
-                                fn, project_code, PAD_REGISTER_VALUES):
-                            angles = playback_ctrl.motion_runtime.get_angles_dict()
+                angles = None
+                for fn in list(playback_ctrl._computed_func_names):
+                    if playback_ctrl.motion_runtime.call_function(
+                            fn, project_code, PAD_REGISTER_VALUES):
+                        angles = playback_ctrl.motion_runtime.get_angles_dict()
 
-                    if angles:
-                        rm = motion_state['robot_model']
-                        with stl_viewer._vtk_lock:
-                            playback_ctrl.next_angles.update(angles)
-                            playback_ctrl.prev_angles.update(angles)
-                            limited = playback_ctrl._apply_joint_speed_limits(
-                                angles, 1.0 / loop_hz)
-                            fk_limited = joint_editor.get_angles_for_3d(limited)
-                            if rm:
-                                rm.apply_joint_angles(fk_limited)
-                        lme_valkey.write_angles(fk_limited)
+                if angles:
+                    rm = motion_state['robot_model']
+                    with stl_viewer._vtk_lock:
+                        playback_ctrl.next_angles.update(angles)
+                        playback_ctrl.prev_angles.update(angles)
+                        limited = playback_ctrl._apply_joint_speed_limits(
+                            angles, 1.0 / loop_hz)
+                        fk_limited = joint_editor.get_angles_for_3d(limited)
+                        if rm:
+                            rm.apply_joint_angles(fk_limited)
+                    lme_valkey.write_angles(fk_limited)
 
-                    elapsed_ms = playback_ctrl.elapsed_timer.elapsed() - t0
-                    remaining_sec = max(0.0, (1000.0 / loop_hz - elapsed_ms) / 1000.0)
-                    time.sleep(remaining_sec)
+                elapsed_ms = playback_ctrl.elapsed_timer.elapsed() - t0
+                remaining_sec = max(0.0, (1000.0 / loop_hz - elapsed_ms) / 1000.0)
+                time.sleep(remaining_sec)
 
-            threading.Thread(target=_computed_ik_worker, daemon=True).start()
+        threading.Thread(target=_computed_ik_worker, daemon=True).start()
 
         def on_joint_drag_ended():
             """3Dビューでの関節ドラッグ終了時"""
@@ -12995,7 +13185,9 @@ if __name__ == '__main__':
         buttons["Add Pose"].clicked.connect(on_add_pose_node)
         def _on_add_sub_action(action):
             text = action.text()
-            if text == "Define":
+            if text == "Wait":
+                on_add_wait_node()
+            elif text == "Define":
                 on_add_define_node()
             elif text == "Command":
                 on_add_command()
@@ -13189,7 +13381,7 @@ if __name__ == '__main__':
         def _find_graph_node_for_virtual(virtual_node):
             """Return the real graph node whose name matches the given virtual node, or None."""
             if not isinstance(virtual_node, (
-                VirtualBaseLinkNode, VirtualPoseNode, VirtualDefineNode,
+                VirtualBaseLinkNode, VirtualPoseNode, VirtualDefineNode, VirtualWaitNode,
                 VirtualBranchingNode, VirtualJumpNode, VirtualMixNode, VirtualCommandNode
             )):
                 return None
@@ -14046,6 +14238,10 @@ if __name__ == '__main__':
                 save_app_settings(_sv)
 
                 loop_hz = int(getattr(playback_ctrl, "fps", 100) or 100)
+                _rm = motion_state.get("robot_model")
+                _jo = getattr(_rm, "joint_order", None) if _rm else None
+                joints_param = tuple(_jo) if _jo else None
+
                 result = export_cartridge(
                     motion_action_state,
                     fp,
@@ -14055,6 +14251,7 @@ if __name__ == '__main__':
                     boot_action_idx=boot_action_idx,
                     base_action_idx=base_action_idx,
                     project_code=getattr(graph, "project_code", "") or "",
+                    joints=joints_param,
                 )
 
                 # Report.
