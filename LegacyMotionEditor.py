@@ -13650,8 +13650,63 @@ if __name__ == '__main__':
                 print(f"[Motion] Play action only error: {e}")
                 traceback.print_exc()
 
+        # Boot Playback 用の内部状態:
+        # ▶︎_ で Boot Action へ内部的に切替えたとき、combo 表示は元の Action の
+        # ままにしておき、再生終了後に元の Action へ黙って戻す。
+        _boot_playback_state = {"return_idx": None}
+
+        def _restore_action_after_boot_playback():
+            """▶︎_ で Boot に切替えて再生した場合、再生終了後に元の Action へ戻す。"""
+            ret_idx = _boot_playback_state.get("return_idx")
+            if ret_idx is None:
+                return
+            _boot_playback_state["return_idx"] = None
+            try:
+                # 現在（= Boot）の graph 状態をスナップショットして保存
+                cur = motion_action_state.get("current", 0)
+                items = motion_action_state.get("items", [])
+                if 0 <= cur < len(items):
+                    try:
+                        items[cur]["data"] = capture_motion_action_snapshot()
+                    except Exception as _snap_e:
+                        print(f"[Motion] Snapshot Boot after playback failed: {_snap_e}")
+                # 元の Action に戻す
+                if 0 <= ret_idx < len(items):
+                    motion_action_state["current"] = ret_idx
+                    data = items[ret_idx].get("data")
+                    if data is not None:
+                        apply_motion_action_data(data)
+                # combo は元々触っていないので index はそのまま (return_idx)。
+                # 念のため一致させておく
+                try:
+                    action_combo.blockSignals(True)
+                    action_combo.setCurrentIndex(ret_idx)
+                    action_combo.blockSignals(False)
+                    action_combo.setEnabled(True)
+                except Exception:
+                    pass
+            except Exception as _e:
+                print(f"[Motion] Restore action after Boot playback failed: {_e}")
+                try:
+                    action_combo.setEnabled(True)
+                except Exception:
+                    pass
+
+        playback_ctrl.playback_finished.connect(_restore_action_after_boot_playback)
+
         def on_play_full():
-            """▶︎_: 選択ノード（未選択時はStart）から再生、他Actionへの遷移も許可"""
+            """▶︎_: Boot Action の Start から再生する。
+
+            - motion_action_state.items のうち title に 'boot' を含む Action
+              (大文字小文字無視) を Boot と識別。
+            - 現在の Action が Boot でなければ、現状をスナップショットして
+              内部的に Boot の内容へ切替える。ただし combo 表示は元のまま
+              保ち、再生終了後 (_restore_action_after_boot_playback) で
+              自動的に元の Action へ戻す。ユーザから見ると「開いているページは
+              変わらないが、実行は Boot から」の体験になる。
+            - Boot Action が見つからない場合は現在 Action の StartNode から再生。
+            - 選択ノードは無視して常に StartNode 起点で再生。
+            """
             try:
                 cleanup_orphaned_connections(graph)
                 rm = motion_state['robot_model']
@@ -13659,15 +13714,47 @@ if __name__ == '__main__':
                     QtWidgets.QMessageBox.warning(
                         main_window, "Warning", "No URDF loaded.")
                     return
-                start_node = _find_selected_node()
-                selected_pose = start_node if isinstance(start_node, PoseNode) else None
+
+                # Boot Action を探す（title に 'boot' を含む、大文字小文字無視）
+                items = motion_action_state.get("items", []) if motion_action_state else []
+                boot_idx = next(
+                    (i for i, it in enumerate(items)
+                     if "boot" in (it.get("title") or "").lower()),
+                    None,
+                )
+                cur_idx = motion_action_state.get("current", 0) if motion_action_state else 0
+
+                # 現在の Action が Boot でなければ、内部的に Boot へ切替
+                if boot_idx is not None and boot_idx != cur_idx:
+                    try:
+                        motion_action_state["items"][cur_idx]["data"] = (
+                            capture_motion_action_snapshot()
+                        )
+                    except Exception as _e:
+                        print(f"[Motion] Failed to snapshot current action: {_e}")
+                    motion_action_state["current"] = boot_idx
+                    entry = motion_action_state["items"][boot_idx]
+                    data = entry.get("data")
+                    if data is not None:
+                        apply_motion_action_data(data)
+                    # combo 表示は cur_idx のまま維持（自動ジャンプさせない）。
+                    # 内部 state と combo 表示が乖離するので、再生終了まで combo
+                    # 操作を封じる。playback_finished で復元＆再有効化する。
+                    _boot_playback_state["return_idx"] = cur_idx
+                    try:
+                        action_combo.setEnabled(False)
+                    except Exception:
+                        pass
+
+                start_node = _find_start_node_in_graph()
                 if not start_node:
-                    start_node = _find_start_node_in_graph()
-                if not start_node:
+                    # 起動に失敗したので、Boot 切替を巻き戻しておく
+                    if _boot_playback_state.get("return_idx") is not None:
+                        _restore_action_after_boot_playback()
                     QtWidgets.QMessageBox.warning(
                         main_window, "Warning", "No StartNode found.")
                     return
-                playback_ui_state["restore_node"] = selected_pose
+                playback_ui_state["restore_node"] = None
                 playback_ui_state["locked"] = True
                 playback_restore_timer.stop()
                 on_node_highlight(start_node)
@@ -13677,6 +13764,12 @@ if __name__ == '__main__':
                 playback_ui_state["locked"] = False
                 playback_restore_timer.stop()
                 _set_play_label_playing(False)
+                # 例外時も Boot 切替を巻き戻す
+                if _boot_playback_state.get("return_idx") is not None:
+                    try:
+                        _restore_action_after_boot_playback()
+                    except Exception:
+                        pass
                 print(f"[Motion] Play full error: {e}")
                 traceback.print_exc()
 
