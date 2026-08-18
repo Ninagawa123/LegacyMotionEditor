@@ -314,6 +314,78 @@ def _run_companion_shutdown():
     _close_mujoco_studio_processes()
 
 
+def _bring_mujoco_studio_to_front():
+    """既に起動している MuJoCoStudio ウィンドウを最前面に持ってくる。
+
+    - macOS: osascript で unix id (PID) 指定で activate
+    - Windows: EnumWindows でタイトル一致の HWND を探して SetForegroundWindow
+    - Linux: wmctrl → xdotool の順で試行
+    ベストエフォート。成功したら True を返す。
+    """
+    import subprocess
+    pids = [p.pid for p in _mujoco_studio_procs if p.poll() is None]
+    title_needle = "LegacyMotionEditor MuJoCoStudio"
+    try:
+        if sys.platform == "darwin":
+            if not pids:
+                return False
+            for pid in pids:
+                try:
+                    subprocess.run(
+                        ["osascript", "-e",
+                         f'tell application "System Events" to set frontmost '
+                         f'of (first process whose unix id is {pid}) to true'],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        timeout=2,
+                    )
+                except Exception:
+                    pass
+            return True
+        elif sys.platform.startswith("win"):
+            import ctypes
+            from ctypes import wintypes
+            user32 = ctypes.windll.user32
+            found = []
+
+            @ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+            def _enum_cb(hwnd, _lparam):
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length > 0:
+                    buff = ctypes.create_unicode_buffer(length + 1)
+                    user32.GetWindowTextW(hwnd, buff, length + 1)
+                    if title_needle in buff.value:
+                        found.append(hwnd)
+                return True
+
+            user32.EnumWindows(_enum_cb, 0)
+            for hwnd in found:
+                try:
+                    user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                    user32.SetForegroundWindow(hwnd)
+                except Exception:
+                    pass
+            return bool(found)
+        else:
+            for cmd in (["wmctrl", "-a", title_needle],
+                        ["xdotool", "search", "--name", title_needle,
+                         "windowactivate"]):
+                try:
+                    result = subprocess.run(
+                        cmd, stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL, timeout=2,
+                    )
+                    if result.returncode == 0:
+                        return True
+                except FileNotFoundError:
+                    continue
+                except Exception:
+                    continue
+            return False
+    except Exception as _e:
+        print(f"[MuJoCo] bring to front failed: {_e}")
+        return False
+
+
 # 親クラス(NodeGraphQt)の選択枠色を NODE_GRAPH_FOCUS_COLOR に合わせる
 # NodeEnum.SELECTED_BORDER_COLOR を差し替え（node_base の import 前に実行すること）
 import NodeGraphQt.constants as _ngq_const
@@ -12730,6 +12802,8 @@ if __name__ == '__main__':
         def launch_mujoco_studio():
             import subprocess
             if _mujoco_studio_is_running():
+                # 既に起動している場合はウィンドウを最前面へ
+                _bring_mujoco_studio_to_front()
                 return
             studio_path = os.path.join(_LEGACY_EDITOR_DIR, "LegacyMotionEditor_MuJoCoStudio.py")
             s = load_app_settings()

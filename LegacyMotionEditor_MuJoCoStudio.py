@@ -585,6 +585,52 @@ def generate_play_mjcf(src_path: str, out_path: str,
     return True
 
 
+def _append_grid_line_overlay(root: ET.Element) -> None:
+    """worldbody に「下から見たときに残るグリッド線」用の細い box geom を
+    格子状に追加する。group=4 に入れて描画時に camera Z に応じて toggle する。
+
+    - X-parallel (X 軸に沿う) と Y-parallel の 2 方向、それぞれ 15 本ずつ
+      (y=-14, -12, ..., +14 と x=-14, ..., +14)。合計 30 本。
+    - contype/conaffinity=0 でコリジョン発生なし。
+    - 床 (testgrid_floor_flat) の上面 (z=0.001) より僅かに上に配置し Z-fight 回避。
+    - group="4" を使用する。group=3 は多くの MJCF でコライダー geom に慣習的に
+      割り当てられており、そこを toggle するとコライダーが一緒に見えてしまう
+      ため、衝突しない group 4 に隔離する。
+    """
+    worldbody = root.find("worldbody")
+    if worldbody is None:
+        return
+    # 床面上面のわずかに上、グリッド線としての Z 位置
+    line_z = 0.0015
+    line_z_half = 0.0002    # 厚み (2 * 0.0002 = 0.4mm)
+    line_w_half = 0.008     # 線幅 (2 * 0.008 = 16mm)
+    line_len_half = 15.0    # 床と同じ半サイズ
+    color = "0.35 0.35 0.35 1"
+    grid_group = "4"
+
+    for iy in range(-14, 15, 2):  # -14..14 step 2 → 15 本
+        g = ET.SubElement(worldbody, "geom")
+        g.set("name", f"lme_grid_x_{iy:+d}")
+        g.set("type", "box")
+        g.set("size", f"{line_len_half} {line_w_half} {line_z_half}")
+        g.set("pos", f"0 {iy} {line_z}")
+        g.set("rgba", color)
+        g.set("group", grid_group)
+        g.set("contype", "0")
+        g.set("conaffinity", "0")
+
+    for ix in range(-14, 15, 2):
+        g = ET.SubElement(worldbody, "geom")
+        g.set("name", f"lme_grid_y_{ix:+d}")
+        g.set("type", "box")
+        g.set("size", f"{line_w_half} {line_len_half} {line_z_half}")
+        g.set("pos", f"{ix} 0 {line_z}")
+        g.set("rgba", color)
+        g.set("group", grid_group)
+        g.set("contype", "0")
+        g.set("conaffinity", "0")
+
+
 def write_active_scene(script_dir: str, p1_rel: str = "") -> str:
     out = os.path.join(script_dir, ACTIVE_SCENE_REL.replace("/", os.sep))
     os.makedirs(os.path.dirname(out), exist_ok=True)
@@ -610,6 +656,8 @@ def write_active_scene(script_dir: str, p1_rel: str = "") -> str:
                 idx = i + 1
                 break
         root.insert(idx, inc)
+    # カメラが床下に来たときにも表示する grid line overlay を追加。
+    _append_grid_line_overlay(root)
     # Texture path "testgrid_mjcf/testgrid_grid.png" in _SCENE_XML is already
     # relative to log/ (where ensure_testgrid writes the PNG), so no rewrite needed.
     ET.ElementTree(root).write(out, encoding="unicode", xml_declaration=False)
@@ -643,7 +691,16 @@ class StudioApp:
         self.model: Optional[mujoco.MjModel] = None
         self.data: Optional[mujoco.MjData] = None
         self.cam = mujoco.MjvCamera()
+        # 描画オプション: geomgroup[i] を 0/1 で切替えて group 単位の可視制御ができる。
+        # デフォルトでは全 group 表示。カメラが床下に来たら床の group を隠す。
+        self.opt = mujoco.MjvOption()
         self.renderer: Optional[mujoco.Renderer] = None
+
+        # 床の geom を hide toggle するためのメタ情報
+        # (load_model で resolve される)
+        self._floor_geom_id: Optional[int] = None
+        self._floor_geom_group: Optional[int] = None
+        self._floor_z: float = -0.001  # デフォルト値、load_model で上書き
 
         self.motor_proc: Optional[subprocess.Popen] = None
         self.shm_ctrl = self.shm_sensor = self.shm_meta = None
@@ -727,9 +784,21 @@ class StudioApp:
             cam_cfg = self.cfg.get("camera") or {}
             self.cam.azimuth = float(cam_cfg.get("azimuth", -130.0))
             self.cam.elevation = float(cam_cfg.get("elevation", -20.0))
-            self.cam.distance = float(cam_cfg.get("distance", 2.0))
+            # 過去に F キー等で保存された壊れた distance を安全値にクランプ
+            _d = float(cam_cfg.get("distance", 2.0))
+            if not math.isfinite(_d):
+                _d = 2.0
+            self.cam.distance = max(self._CAM_DISTANCE_MIN,
+                                    min(self._CAM_DISTANCE_MAX, _d))
             lookat = cam_cfg.get("lookat", [0.0, 0.0, 0.3])
-            self.cam.lookat[:] = lookat
+            # lookat も NaN/Inf 除去とざっくり範囲チェック
+            try:
+                _la = [float(v) for v in lookat]
+                if not all(math.isfinite(v) and abs(v) < 100.0 for v in _la):
+                    _la = [0.0, 0.0, 0.3]
+            except Exception:
+                _la = [0.0, 0.0, 0.3]
+            self.cam.lookat[:] = _la
         else:
             self.cam.distance = 2.0
             self.cam.azimuth = -130
@@ -737,7 +806,41 @@ class StudioApp:
             self.cam.lookat[:] = [0, 0, 0.3]
         self._ensure_renderer()
         self.joint_map = resolve_joint_map(self.model)
+        # 床 geom (testgrid_floor_flat) の位置/group を解決。
+        # カメラが床下に来たら描画時に group を隠すために使う。
+        self._resolve_floor_geom()
         logger.info("Loaded scene nu=%d nq=%d", self.model.nu, self.model.nq)
+
+    def _resolve_floor_geom(self) -> None:
+        """testgrid_floor_flat（またはそれに準ずる床 geom）の id/group/Z を保持。"""
+        self._floor_geom_id = None
+        self._floor_geom_group = None
+        if self.model is None:
+            return
+        try:
+            gid = mujoco.mj_name2id(
+                self.model, mujoco.mjtObj.mjOBJ_GEOM, "testgrid_floor_flat")
+        except Exception:
+            gid = -1
+        if gid is None or gid < 0:
+            # 名前一致が無ければ worldbody 直下の box を床候補として拾う
+            for i in range(self.model.ngeom):
+                if int(self.model.geom_bodyid[i]) == 0 and \
+                        int(self.model.geom_type[i]) == int(mujoco.mjtGeom.mjGEOM_BOX):
+                    gid = i
+                    break
+        if gid is None or gid < 0:
+            return
+        self._floor_geom_id = int(gid)
+        try:
+            self._floor_geom_group = int(self.model.geom_group[gid])
+        except Exception:
+            self._floor_geom_group = 2
+        try:
+            # 床の box は薄いので、pos.z を床面 Z とみなす（size.z より正確）
+            self._floor_z = float(self.model.geom_pos[gid, 2])
+        except Exception:
+            self._floor_z = -0.001
 
     def respawn_model(self) -> None:
         """Reset robot pose/velocities to the initial spawn (R key)."""
@@ -750,6 +853,86 @@ class StudioApp:
             self.ctrl_arr[:n] = np.asarray(self.data.ctrl[:n])
         self._status = "Respawned"
         logger.info("Model respawned (R)")
+
+    # ----- F key: frame robot (recenter lookat + fit distance) -----
+    # ロボットカメラ距離の安全な上限 [m]。
+    # 30m 級の地面 (testgrid_floor_flat) を誤って含めた場合の暴走保険。
+    _CAM_DISTANCE_MIN = 0.2
+    _CAM_DISTANCE_MAX = 20.0
+
+    def _frame_robot(self) -> None:
+        """F key: カメラの向き (azimuth/elevation) を変えずに、ロボットを
+        画面中央に収める。lookat をロボット geoms の AABB 中心へ、distance
+        を AABB を包含する球半径と fovy から計算した値へ設定。
+
+        - 環境 geom (worldbody 直下、地面など) は除外
+        - group=2 (シーン装飾) を除外
+        - 最終 distance は [_CAM_DISTANCE_MIN, _CAM_DISTANCE_MAX] にクランプ
+        """
+        if self.model is None or self.data is None:
+            return
+        try:
+            xs_min = ys_min = zs_min = float("inf")
+            xs_max = ys_max = zs_max = float("-inf")
+            found = False
+            for i in range(self.model.ngeom):
+                # 地面 plane は除外
+                if self.model.geom_type[i] == mujoco.mjtGeom.mjGEOM_PLANE:
+                    continue
+                # worldbody (body_id == 0) 直下の geom は環境 (地面/装飾) と
+                # みなして除外。ロボット geom は必ず freejoint bodies 以下に居る。
+                try:
+                    if int(self.model.geom_bodyid[i]) == 0:
+                        continue
+                except Exception:
+                    pass
+                # シーン装飾用のグループ (group>=2) も除外（既定でロボットは 0/1）
+                try:
+                    if int(self.model.geom_group[i]) >= 2:
+                        continue
+                except Exception:
+                    pass
+                gpos = self.data.geom_xpos[i]
+                gsz = self.model.geom_size[i]
+                # AABB 近似: geom_size の最大成分を半径とみなす
+                r = float(max(abs(gsz[0]),
+                              abs(gsz[1]) if len(gsz) > 1 else 0.0,
+                              abs(gsz[2]) if len(gsz) > 2 else 0.0))
+                if r <= 0:
+                    r = 0.01
+                gx, gy, gz = float(gpos[0]), float(gpos[1]), float(gpos[2])
+                xs_min = min(xs_min, gx - r); xs_max = max(xs_max, gx + r)
+                ys_min = min(ys_min, gy - r); ys_max = max(ys_max, gy + r)
+                zs_min = min(zs_min, gz - r); zs_max = max(zs_max, gz + r)
+                found = True
+            if not found:
+                return
+            cx = 0.5 * (xs_min + xs_max)
+            cy = 0.5 * (ys_min + ys_max)
+            cz = 0.5 * (zs_min + zs_max)
+            dx = xs_max - xs_min
+            dy = ys_max - ys_min
+            dz = zs_max - zs_min
+            radius = 0.5 * math.sqrt(dx * dx + dy * dy + dz * dz)
+            try:
+                fovy_deg = float(self.model.vis.global_.fovy)
+            except Exception:
+                fovy_deg = 45.0
+            if fovy_deg <= 0:
+                fovy_deg = 45.0
+            padding = 1.4
+            distance = radius / math.tan(math.radians(fovy_deg) / 2.0) * padding
+            # 安全なレンジにクランプ
+            distance = max(self._CAM_DISTANCE_MIN,
+                           min(self._CAM_DISTANCE_MAX, distance))
+            # azimuth / elevation は変更しない
+            self.cam.lookat[:] = [cx, cy, cz]
+            self.cam.distance = distance
+            self._status = "Frame robot (F)"
+            # 自動保存視点も更新（0 キーで戻せるように）
+            self._snapshot_cam_state()
+        except Exception as _e:
+            logger.warning("frame robot failed: %s", _e)
 
     # ----- Blender-style camera view shortcuts (numpad/main row 0..9) -----
     def _snapshot_cam_state(self) -> None:
@@ -1026,6 +1209,9 @@ class StudioApp:
                             pass  # 消費
                         elif event.key == pygame.K_r:
                             self.respawn_model()
+                        elif event.key == pygame.K_f:
+                            # F: 向きを保ったままロボットをセンター＆フィット
+                            self._frame_robot()
                         elif event.key == pygame.K_ESCAPE:
                             running = False
                     elif event.type == pygame.MOUSEBUTTONDOWN:
@@ -1082,7 +1268,29 @@ class StudioApp:
 
                 # Render MuJoCo → pygame surface
                 assert self.renderer is not None and self.data is not None
-                self.renderer.update_scene(self.data, self.cam)
+                # カメラ Z を球面座標から算出:
+                #   pos_z = lookat_z - sin(elevation) * distance
+                # 床 Z 未満なら床の group を隠し、代わりにグリッド線 group を
+                # 表示してロボットがグリッドの奥に見えるようにする。
+                try:
+                    _el_rad = math.radians(float(self.cam.elevation))
+                    _cam_z = (float(self.cam.lookat[2])
+                              - math.sin(_el_rad) * float(self.cam.distance))
+                    _below = _cam_z < float(self._floor_z)
+                    _floor_grp = self._floor_geom_group
+                    # _append_grid_line_overlay で入れたグリッド線 group。
+                    # group=3 は多くの MJCF でコライダー geom に慣習的に使われるため
+                    # 混在を避けるため group=4 に隔離している。
+                    _grid_grp = 4
+                    if _floor_grp is not None and 0 <= int(_floor_grp) < len(self.opt.geomgroup):
+                        self.opt.geomgroup[int(_floor_grp)] = 0 if _below else 1
+                    if 0 <= _grid_grp < len(self.opt.geomgroup):
+                        # 下からは grid だけ、上からはテクスチャ床のみで
+                        # 二重表示を避ける
+                        self.opt.geomgroup[_grid_grp] = 1 if _below else 0
+                except Exception:
+                    pass
+                self.renderer.update_scene(self.data, self.cam, self.opt)
                 pixels = self.renderer.render()  # H x W x 3
                 frame = pygame.surfarray.make_surface(
                     np.transpose(pixels, (1, 0, 2)))

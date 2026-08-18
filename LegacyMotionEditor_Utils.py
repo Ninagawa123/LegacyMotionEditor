@@ -3059,7 +3059,7 @@ class PadMonitorDialog(QtWidgets.QDialog):
         trigger_row.addStretch()
         self._open_mujoco_btn = QtWidgets.QPushButton("Open MuJoCo")
         self._open_mujoco_btn.setObjectName("PadAction")
-        self._open_mujoco_btn.setToolTip("Launch MuJoCo Studio (disabled while already open)")
+        self._open_mujoco_btn.setToolTip("Launch MuJoCo Studio (raises the window if already open)")
         self._open_mujoco_btn.setFixedHeight(22)
         self._open_mujoco_btn.clicked.connect(self.open_mujoco_requested.emit)
         trigger_row.addWidget(self._open_mujoco_btn)
@@ -3308,6 +3308,8 @@ class PadMonitorDialog(QtWidgets.QDialog):
         btn = getattr(self, "_open_mujoco_btn", None)
         if btn is None:
             return
+        # 起動中でもクリックできるようにする（クリック時に最前面化される）。
+        # ラベルとツールチップで状態を伝える。
         running = False
         checker = getattr(self, "_mujoco_running_checker", None)
         if callable(checker):
@@ -3315,7 +3317,13 @@ class PadMonitorDialog(QtWidgets.QDialog):
                 running = bool(checker())
             except Exception:
                 running = False
-        btn.setEnabled(not running)
+        btn.setEnabled(True)
+        if running:
+            btn.setText("Raise MuJoCo")
+            btn.setToolTip("MuJoCo Studio is already running — click to bring the window to front")
+        else:
+            btn.setText("Open MuJoCo")
+            btn.setToolTip("Launch MuJoCo Studio (raises the window if already open)")
 
     def showEvent(self, event):
         super(PadMonitorDialog, self).showEvent(event)
