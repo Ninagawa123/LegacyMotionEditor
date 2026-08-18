@@ -1043,11 +1043,37 @@ class CustomViewer(NodeViewer):
         self.scene().update()
 
     def mousePressEvent(self, event):
-        """長押し検出を追加してから親クラスの処理へ"""
+        """長押し検出/Shift複数選択/右クリックメニューを追加してから親クラスの処理へ"""
         cur = event.position().toPoint() if hasattr(event, "position") else event.pos()
-        # Shift+左ドラッグ: NodeGraphQt に渡さずパンに専念
+
+        # 右クリック / macOS の Ctrl+左クリック でコンテキストメニュー
+        _is_right = event.button() == QtCore.Qt.MouseButton.RightButton
+        _is_ctrl_left_mac = (
+            sys.platform == "darwin"
+            and event.button() == QtCore.Qt.MouseButton.LeftButton
+            and bool(event.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier)
+        )
+        if (_is_right or _is_ctrl_left_mac) and self._graph and hasattr(self._graph, '_show_context_menu'):
+            scene_pos = self.mapToScene(cur)
+            if hasattr(event, "globalPosition"):
+                global_pos = event.globalPosition().toPoint()
+            else:
+                global_pos = event.globalPos()
+            self._graph._show_context_menu(scene_pos, global_pos)
+            return
+
+        # Shift+左クリック: ノード上ならトグル選択、空白ならパンに専念
         if (event.button() == QtCore.Qt.MouseButton.LeftButton and
                 event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier):
+            if self._graph and hasattr(self._graph, '_node_from_scene_pos'):
+                scene_pos = self.mapToScene(cur)
+                _node = self._graph._node_from_scene_pos(scene_pos)
+                if _node is not None:
+                    try:
+                        _node.set_selected(not _node.selected())
+                    except Exception as _e:
+                        print(f"[ShiftSelect] toggle failed: {_e}")
+                    return
             self._shift_pan = True
             self._shift_pan_last = cur
             self.setCursor(QtCore.Qt.CursorShape.ClosedHandCursor)
@@ -3243,12 +3269,17 @@ class STLViewerWidget(QtWidgets.QWidget):
     joint_angle_changed = QtCore.Signal(str, float)
     # Valkey チェックボックス切替シグナル
     valkey_toggled = QtCore.Signal(bool)
+    # Live チェックボックス切替シグナル（JointEditor 側と同期する）
+    live_toggled = QtCore.Signal(bool)
     # reset_camera() 完了時: (focal_x, focal_y, focal_z, distance)
     camera_fitted = QtCore.Signal(float, float, float, float)
 
     def __init__(self, parent=None):
         self.joint_editor = None  # set after both widgets are created
         super(STLViewerWidget, self).__init__(parent)
+        # ブレンダー風の 0-9 カメラショートカットを受け取るため
+        # ウィジェット自身もフォーカスを受け取れるようにする
+        self.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.stl_actors = {}
         self.transforms = {}
         self.base_connected_node = None
@@ -3296,6 +3327,12 @@ class STLViewerWidget(QtWidgets.QWidget):
         # Mouse interaction state
         self.last_mouse_pos = None
         self.vtk_display.installEventFilter(self)
+
+        # ブレンダー風カメラ操作: 0 キーで復元するカスタム視点
+        # マウスドラッグ/ズームでカメラが動くたびに自動スナップショットする
+        self._saved_camera_state = None
+        # ドラッグ中にカメラが動いたことを検知するフラグ
+        self._camera_dirty_during_drag = False
 
         # メッシュ選択機能
         self.picker = vtk.vtkCellPicker()
@@ -3404,6 +3441,8 @@ class STLViewerWidget(QtWidgets.QWidget):
         self.opp_check.setChecked(bool(_step_s.get("vtk_drag_opp_enabled", False)))
         self.opp_check.setEnabled(self.pair_check.isChecked())
         self.opp_check.stateChanged.connect(self._save_step_settings)
+        # Pair のサブ項目であることを示すため半文字分インデント
+        self.opp_check.setStyleSheet("QCheckBox { margin-left: 8px; }")
         _ov_layout.addWidget(self.opp_check)
 
         self.group_preset_combo = FlatComboButton()
@@ -3416,6 +3455,25 @@ class STLViewerWidget(QtWidgets.QWidget):
         self.valkey_check.stateChanged.connect(self._save_step_settings)
         self.valkey_check.toggled.connect(lambda v: self.valkey_toggled.emit(v))
         _ov_layout.addWidget(self.valkey_check)
+
+        # Live: スライダー/3Dビューでの角度変更をリアルタイムに Valkey へ送る
+        # JointEditor 側の Live と同期。Valkey が OFF のときは操作不可（グレーアウト）。
+        self.live_check = QtWidgets.QCheckBox("Live")
+        self.live_check.setChecked(bool(_step_s.get("valkey_live_enabled", False)))
+        self.live_check.setEnabled(self.valkey_check.isChecked())
+        self.live_check.stateChanged.connect(self._save_step_settings)
+        self.live_check.toggled.connect(lambda v: self.live_toggled.emit(v))
+        # Valkey のサブ項目であることを示すため半文字分インデント
+        self.live_check.setStyleSheet("QCheckBox { margin-left: 8px; }")
+        _ov_layout.addWidget(self.live_check)
+
+        # Valkey OFF になったら Live もクリアして disabled にする
+        def _on_valkey_toggled_for_live(v):
+            self.live_check.setEnabled(bool(v))
+            if not v and self.live_check.isChecked():
+                # blockSignals せずに toggle → live_toggled が発火 → JointEditor 側にも伝播
+                self.live_check.setChecked(False)
+        self.valkey_check.toggled.connect(_on_valkey_toggled_for_live)
 
         self.pair_check.toggled.connect(lambda v: self.opp_check.setEnabled(v))
 
@@ -3513,6 +3571,8 @@ class STLViewerWidget(QtWidgets.QWidget):
             if event.type() == QtCore.QEvent.MouseButtonPress:
                 mouse_pos = self._get_mouse_pos(event)
                 self.last_mouse_pos = mouse_pos
+                # 0-9 カメラショートカットを受け取れるようフォーカスを掴む
+                self.setFocus(QtCore.Qt.MouseFocusReason)
 
                 if event.button() == QtCore.Qt.LeftButton:
                     # 左クリック: メッシュをピック
@@ -3541,6 +3601,7 @@ class STLViewerWidget(QtWidgets.QWidget):
                         camera.OrthogonalizeViewUp()
                         self.renderer.ResetCameraClippingRange()
                         self.safe_render()
+                        self._camera_dirty_during_drag = True
                 elif event.buttons() & QtCore.Qt.RightButton:
                     # Zoom
                     camera = self.renderer.GetActiveCamera()
@@ -3549,6 +3610,7 @@ class STLViewerWidget(QtWidgets.QWidget):
                     camera.SetParallelScale(max(0.01, scale))
                     self.renderer.ResetCameraClippingRange()
                     self.safe_render()
+                    self._camera_dirty_during_drag = True
                 elif event.buttons() & QtCore.Qt.MiddleButton:
                     # Pan
                     camera = self.renderer.GetActiveCamera()
@@ -3565,6 +3627,7 @@ class STLViewerWidget(QtWidgets.QWidget):
                     )
                     self.renderer.ResetCameraClippingRange()
                     self.safe_render()
+                    self._camera_dirty_during_drag = True
 
                 self.last_mouse_pos = mouse_pos
                 return True
@@ -3572,6 +3635,10 @@ class STLViewerWidget(QtWidgets.QWidget):
             elif event.type() == QtCore.QEvent.MouseButtonRelease:
                 if event.button() == QtCore.Qt.LeftButton:
                     self.end_joint_drag()
+                # ドラッグ中にカメラが動いていれば 0 キー用にスナップショット
+                if self._camera_dirty_during_drag:
+                    self._snapshot_camera_state()
+                    self._camera_dirty_during_drag = False
                 self.last_mouse_pos = None
                 return True
 
@@ -3610,9 +3677,165 @@ class STLViewerWidget(QtWidgets.QWidget):
                 camera.SetParallelScale(max(0.01, scale))
                 self.renderer.ResetCameraClippingRange()
                 self.safe_render()
+                # ホイールズーム後もカメラ状態をスナップショット
+                self._snapshot_camera_state()
                 return True
 
+            elif event.type() == QtCore.QEvent.KeyPress:
+                # ブレンダー風カメラビューショートカット（テンキー/メイン両対応）
+                if self._handle_camera_view_key(event):
+                    return True
+
         return super(STLViewerWidget, self).eventFilter(obj, event)
+
+    # ---------------------------------------------------------------
+    # Blender-style camera view shortcuts (numpad/main row 0..9)
+    # ---------------------------------------------------------------
+    def keyPressEvent(self, event):
+        """ウィジェット自身がフォーカスを持っているときに 0-9 を受ける。
+        eventFilter は QLabel(vtk_display) にフォーカスがある場合の受け皿。"""
+        if self._handle_camera_view_key(event):
+            event.accept()
+            return
+        super(STLViewerWidget, self).keyPressEvent(event)
+
+    def _snapshot_camera_state(self):
+        """カメラの現在の位置/焦点/view_up/parallel_scale をスナップショット。
+        0キー押下で復元される。"""
+        try:
+            cam = self.renderer.GetActiveCamera()
+            self._saved_camera_state = {
+                "position":       tuple(cam.GetPosition()),
+                "focal_point":    tuple(cam.GetFocalPoint()),
+                "view_up":        tuple(cam.GetViewUp()),
+                "parallel_scale": float(cam.GetParallelScale()),
+            }
+        except Exception as _e:
+            print(f"[Camera] snapshot failed: {_e}")
+
+    def _restore_camera_state(self):
+        """スナップショットされたカメラ状態を復元。無ければ何もしない。"""
+        s = self._saved_camera_state
+        if not s:
+            print("[Camera] No saved camera state to restore")
+            return
+        try:
+            cam = self.renderer.GetActiveCamera()
+            cam.SetPosition(*s["position"])
+            cam.SetFocalPoint(*s["focal_point"])
+            cam.SetViewUp(*s["view_up"])
+            cam.SetParallelScale(s["parallel_scale"])
+            cam.OrthogonalizeViewUp()
+            self.renderer.ResetCameraClippingRange()
+            self.safe_render()
+        except Exception as _e:
+            print(f"[Camera] restore failed: {_e}")
+
+    def _apply_standard_view(self, azimuth_deg, elevation_deg):
+        """現在の焦点点と距離を保ちながら方位/仰角のみを設定する。"""
+        try:
+            cam = self.renderer.GetActiveCamera()
+            focal = cam.GetFocalPoint()
+            pos = cam.GetPosition()
+            dx = pos[0] - focal[0]
+            dy = pos[1] - focal[1]
+            dz = pos[2] - focal[2]
+            distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+            if distance < 1e-6:
+                distance = 1.0
+            az = math.radians(azimuth_deg)
+            el = math.radians(elevation_deg)
+            cam.SetPosition(
+                focal[0] + distance * math.cos(el) * math.cos(az),
+                focal[1] + distance * math.cos(el) * math.sin(az),
+                focal[2] + distance * math.sin(el),
+            )
+            cam.SetViewUp(0, 0, 1)
+            cam.OrthogonalizeViewUp()
+            self.renderer.ResetCameraClippingRange()
+            self.safe_render()
+        except Exception as _e:
+            print(f"[Camera] standard view failed: {_e}")
+
+    def _rotate_camera_delta(self, azimuth_delta_deg, elevation_delta_deg):
+        """現在のカメラを Azimuth / Elevation で微小回転する。"""
+        try:
+            cam = self.renderer.GetActiveCamera()
+            if azimuth_delta_deg:
+                cam.Azimuth(float(azimuth_delta_deg))
+            if elevation_delta_deg:
+                cam.Elevation(float(elevation_delta_deg))
+            cam.OrthogonalizeViewUp()
+            self.renderer.ResetCameraClippingRange()
+            self.safe_render()
+        except Exception as _e:
+            print(f"[Camera] rotate failed: {_e}")
+
+    def _flip_camera_through_focal(self):
+        """焦点点を対称中心としてカメラ位置を面対称反転する（9キー）。"""
+        try:
+            cam = self.renderer.GetActiveCamera()
+            focal = cam.GetFocalPoint()
+            pos = cam.GetPosition()
+            cam.SetPosition(
+                2 * focal[0] - pos[0],
+                2 * focal[1] - pos[1],
+                2 * focal[2] - pos[2],
+            )
+            # ViewUp は世界上向きを維持
+            cam.SetViewUp(0, 0, 1)
+            cam.OrthogonalizeViewUp()
+            self.renderer.ResetCameraClippingRange()
+            self.safe_render()
+        except Exception as _e:
+            print(f"[Camera] flip failed: {_e}")
+
+    def _handle_camera_view_key(self, event) -> bool:
+        """0-9 (テンキー/メイン両方) を受けてブレンダー風カメラ操作を実行。
+        処理したら True を返す。"""
+        # Qt では numpad の 0..9 も Key_0..Key_9 と同じ値。KeypadModifier で区別
+        # 可能だがここでは両方受ける。
+        key = event.key()
+        # Digit キー以外はスルー
+        digit_map = {
+            QtCore.Qt.Key_0: 0, QtCore.Qt.Key_1: 1, QtCore.Qt.Key_2: 2,
+            QtCore.Qt.Key_3: 3, QtCore.Qt.Key_4: 4, QtCore.Qt.Key_5: 5,
+            QtCore.Qt.Key_6: 6, QtCore.Qt.Key_7: 7, QtCore.Qt.Key_8: 8,
+            QtCore.Qt.Key_9: 9,
+        }
+        if key not in digit_map:
+            return False
+        # 修飾キー付きは無視（Ctrl+1 / Cmd+1 等は他のショートカットに任せる）。
+        # KeypadModifier や NumLock 相当のフラグは許容する。
+        # PySide6 の KeyboardModifier は int() 不可なので QFlags のまま bitwise で判定。
+        mods = event.modifiers()
+        blocking_mods = (QtCore.Qt.ControlModifier | QtCore.Qt.MetaModifier |
+                         QtCore.Qt.AltModifier | QtCore.Qt.ShiftModifier)
+        if bool(mods & blocking_mods):
+            return False
+
+        n = digit_map[key]
+        if n == 0:
+            self._restore_camera_state()
+        elif n == 1:
+            self._apply_standard_view(0, 0)          # Front (+X から見る)
+        elif n == 3:
+            self._apply_standard_view(90, 0)         # Right (+Y から見る)
+        elif n == 7:
+            self._apply_standard_view(0, 90)         # Top (+Z から見下ろす)
+        elif n == 2:
+            self._rotate_camera_delta(0, +15)        # elevation +15
+        elif n == 8:
+            self._rotate_camera_delta(0, -15)        # elevation -15
+        elif n == 4:
+            self._rotate_camera_delta(-15, 0)        # azimuth -15
+        elif n == 6:
+            self._rotate_camera_delta(+15, 0)        # azimuth +15
+        elif n == 9:
+            self._flip_camera_through_focal()
+        elif n == 5:
+            return False  # 5 は未割り当て
+        return True
 
     def safe_render(self):
         """オフスクリーンレンダリングでQLabelを更新"""
@@ -3952,6 +4175,8 @@ class STLViewerWidget(QtWidgets.QWidget):
         s["vtk_drag_step_deg"] = self.step_snap_spin.value()
         s["vtk_drag_pair_enabled"] = self.pair_check.isChecked()
         s["vtk_drag_opp_enabled"] = self.opp_check.isChecked()
+        s["valkey_enabled"] = self.valkey_check.isChecked()
+        s["valkey_live_enabled"] = self.live_check.isChecked()
         save_app_settings(s)
 
     def end_joint_drag(self):
@@ -4392,6 +4617,93 @@ class STLViewerWidget(QtWidgets.QWidget):
             "https://gkjohnson.github.io/urdf-loaders/javascript/example/bundle/")
         QtGui.QDesktopServices.openUrl(url)
 
+
+# ---------------------------------------------------------------
+# Context menu style (Copy / Duplicate / Delete / Divide)
+# ---------------------------------------------------------------
+_CONTEXT_MENU_STYLESHEET = """
+QMenu {
+    background-color: #2b2b2b;
+    color: #e6e6e6;
+    border: 1px solid #555555;
+    padding: 4px 0px;
+}
+QMenu::item {
+    background-color: transparent;
+    padding: 6px 24px 6px 20px;
+    margin: 1px 4px;
+    border-radius: 3px;
+}
+QMenu::item:selected {
+    background-color: #3d7fd6;
+    color: #ffffff;
+}
+QMenu::item:pressed {
+    background-color: #1f5aa8;
+    color: #ffffff;
+}
+QMenu::item:disabled {
+    color: #7a7a7a;
+}
+QMenu::separator {
+    height: 1px;
+    background: #555555;
+    margin: 4px 8px;
+}
+"""
+
+
+class DivideDialog(QtWidgets.QDialog):
+    """Divide 実行時に分割数とイージングを問い合わせるモーダル。"""
+
+    def __init__(self, initial_easing_option, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Divide Pose Transition")
+        self.setModal(True)
+        # 初期表示のイージングを覚えておき、accept 時に変更判定に使う
+        self._initial_easing_option = str(initial_easing_option or EASING_OPTIONS[0])
+
+        form = QtWidgets.QFormLayout(self)
+
+        self._split_spin = QtWidgets.QSpinBox()
+        self._split_spin.setRange(1, 99)
+        self._split_spin.setValue(1)
+        # ホイールでも増減できるように focus policy を強めに
+        self._split_spin.setFocusPolicy(QtCore.Qt.WheelFocus)
+        self._split_spin.setKeyboardTracking(True)
+        form.addRow("Split count:", self._split_spin)
+
+        self._easing_combo = QtWidgets.QComboBox()
+        self._easing_combo.addItems(EASING_OPTIONS)
+        try:
+            _init_idx = easing_index(self._initial_easing_option)
+            self._easing_combo.setCurrentIndex(_init_idx)
+        except Exception:
+            self._easing_combo.setCurrentIndex(0)
+        form.addRow("Easing (target):", self._easing_combo)
+
+        btns = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
+        )
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        form.addRow(btns)
+
+    def get_split_count(self) -> int:
+        return int(self._split_spin.value())
+
+    def get_easing_option(self) -> str:
+        return str(self._easing_combo.currentText())
+
+    def easing_user_changed(self) -> bool:
+        """ユーザーがイージングプルダウンを変更したかどうか。"""
+        try:
+            init_idx = easing_index(self._initial_easing_option)
+        except Exception:
+            init_idx = 0
+        return int(self._easing_combo.currentIndex()) != int(init_idx)
+
+
 class CustomNodeGraph(NodeGraph):
     node_long_pressed = QtCore.Signal(object)  # emits the node after 1-second hold
 
@@ -4590,6 +4902,309 @@ class CustomNodeGraph(NodeGraph):
         self._long_press_node = None
         if node is not None:
             self.node_long_pressed.emit(node)
+
+    # ---------------------------------------------------------------
+    # Context menu (right-click / macOS Ctrl+left-click)
+    # ---------------------------------------------------------------
+    def _show_context_menu(self, scene_pos, global_pos):
+        """CustomViewer から呼ばれる。カーソル位置にコンテキストメニューを表示する。
+
+        - クリック位置にノードがあり、それが未選択なら単体選択に切り替える
+        - 選択なしなら何もしない
+        - Divide は「エッジで結ばれた PoseNode 2つ」のときだけ表示
+        """
+        try:
+            clicked_node = self._node_from_scene_pos(scene_pos)
+        except Exception:
+            clicked_node = None
+
+        if clicked_node is not None:
+            try:
+                if not clicked_node.selected():
+                    for _n in self.selected_nodes():
+                        _n.set_selected(False)
+                    clicked_node.set_selected(True)
+            except Exception as _e:
+                print(f"[ContextMenu] selection sync failed: {_e}")
+
+        selected = list(self.selected_nodes())
+        if not selected:
+            return
+
+        # _copy_nodes / _duplicate_nodes / _collect_graph_name_set 等は
+        # CustomViewer 側に実装されているのでビュー経由で呼ぶ
+        viewer = self.viewer()
+
+        menu = QtWidgets.QMenu(self._view)
+        menu.setStyleSheet(_CONTEXT_MENU_STYLESHEET)
+        act_copy = menu.addAction("Copy")
+        act_dup = menu.addAction("Duplicate")
+        act_del = menu.addAction("Delete")
+
+        divide_pair = self._detect_divide_pair(selected)
+        act_divide = None
+        if divide_pair is not None:
+            menu.addSeparator()
+            act_divide = menu.addAction("Divide")
+
+        chosen = menu.exec_(global_pos)
+        if chosen is None:
+            return
+
+        try:
+            if chosen == act_copy:
+                if viewer and hasattr(viewer, '_copy_nodes'):
+                    viewer._copy_nodes(selected)
+            elif chosen == act_dup:
+                if self._undo_push_fn:
+                    self._undo_push_fn()
+                if viewer and hasattr(viewer, '_duplicate_nodes'):
+                    # 右下（+x, +y）にオフセットして複製
+                    viewer._duplicate_nodes(selected, offset_x=80, offset_y=80)
+            elif chosen == act_del:
+                deletable = [n for n in selected if not isinstance(n, BaseLinkNode)]
+                if not deletable:
+                    print("[ContextMenu] No deletable nodes in selection")
+                    return
+                if self._undo_push_fn:
+                    self._undo_push_fn()
+                for _n in deletable:
+                    self.remove_node(_n)
+                print(f"[ContextMenu] Deleted {len(deletable)} node(s)")
+            elif chosen == act_divide and divide_pair is not None:
+                src, dst = divide_pair
+                self._show_divide_dialog(src, dst)
+        except Exception as _e:
+            print(f"[ContextMenu] action failed: {_e}")
+            import traceback
+            traceback.print_exc()
+
+    def _detect_divide_pair(self, selected):
+        """選択が「エッジで結ばれた PoseNode 2つ」なら (元, 先) を返す。それ以外は None。"""
+        if len(selected) != 2:
+            return None
+        a, b = selected
+        if not (isinstance(a, PoseNode) and isinstance(b, PoseNode)):
+            return None
+
+        def _connected(src, dst):
+            try:
+                for out_port in src.output_ports():
+                    for cp in out_port.connected_ports():
+                        if cp.node() is dst:
+                            return True
+            except Exception:
+                pass
+            return False
+
+        if _connected(a, b):
+            return (a, b)
+        if _connected(b, a):
+            return (b, a)
+        return None
+
+    # ---------------------------------------------------------------
+    # Divide: modal + execution
+    # ---------------------------------------------------------------
+    def _representative_easing_option(self, node):
+        """ノードの joint_easings から最多の easing option 文字列を返す。"""
+        easings = getattr(node, 'joint_easings', None) or {}
+        if not easings:
+            return EASING_OPTIONS[0]
+        counts = {}
+        for v in easings.values():
+            try:
+                key = easing_option(v)
+            except Exception:
+                key = EASING_OPTIONS[0]
+            counts[key] = counts.get(key, 0) + 1
+        # 最多を選ぶ（同数なら EASING_OPTIONS の並び順で先勝ち）
+        best = None
+        for opt in EASING_OPTIONS:
+            if opt in counts:
+                if best is None or counts[opt] > counts[best]:
+                    best = opt
+        return best or EASING_OPTIONS[0]
+
+    def _show_divide_dialog(self, src, dst):
+        """Divide モーダルを開き、OK なら _execute_divide を呼ぶ。"""
+        initial = self._representative_easing_option(dst)
+        dlg = DivideDialog(initial, parent=self._view.window() if self._view else None)
+        if dlg.exec_() != QtWidgets.QDialog.Accepted:
+            return
+        n_new = dlg.get_split_count()
+        chosen_easing = dlg.get_easing_option() if dlg.easing_user_changed() else None
+
+        if self._undo_push_fn:
+            self._undo_push_fn()
+        self._execute_divide(src, dst, n_new, chosen_easing)
+
+    def _execute_divide(self, src, dst, n_new, chosen_easing):
+        """src → dst の間に n_new 枚の PoseNode を挿入する。
+
+        - スライダー値: dst.joint_easings を各ジョイントで用い normalized time で補間
+          （chosen_easing が指定されていれば代わりにそれを一律使用）
+        - フレーム: dst.frames を (n_new+1) 個の区間に等分割。端数は dst に加算
+          （合計は変わらない）
+        - 配置: src → dst の直線上を等分割
+        - 生成ノードの joint_easings: chosen_easing 指定時はそれで一律、無指定なら linear
+        - 遷移先の joint_easings: chosen_easing 指定時のみ一律上書き
+        """
+        try:
+            self._execute_divide_impl(src, dst, n_new, chosen_easing)
+        except Exception as _e:
+            print(f"[Divide] execution failed: {_e}")
+            import traceback
+            traceback.print_exc()
+
+    def _execute_divide_impl(self, src, dst, n_new, chosen_easing):
+        if not isinstance(src, PoseNode) or not isinstance(dst, PoseNode):
+            print("[Divide] src/dst must be PoseNode")
+            return
+        n_new = int(max(1, n_new))
+        print(f"[Divide] start: src={src.name()} dst={dst.name()} "
+              f"n_new={n_new} chosen_easing={chosen_easing}")
+
+        # フレーム分割
+        total_frames = int(getattr(dst, 'frames', get_default_hz_fps()))
+        segs = n_new + 1
+        per_frames = total_frames // segs
+        remainder = total_frames - per_frames * segs
+        if per_frames <= 0:
+            # 0 フレームでは意味がないので警告して中断
+            QtWidgets.QMessageBox.warning(
+                self._view.window() if self._view else None,
+                "Divide",
+                f"分割数 {n_new} が遷移先フレーム数 {total_frames} に対して大きすぎます。\n"
+                f"各区間が 1 フレーム以上になる分割数を指定してください。"
+            )
+            return
+
+        # 遷移元/遷移先位置
+        _sp = src.pos()
+        _dp = dst.pos()
+        sx, sy = (_sp[0], _sp[1]) if isinstance(_sp, (list, tuple)) else (_sp.x(), _sp.y())
+        dx, dy = (_dp[0], _dp[1]) if isinstance(_dp, (list, tuple)) else (_dp.x(), _dp.y())
+
+        # 補間用: ジョイントごとの easing 解決
+        dst_easings = dict(getattr(dst, 'joint_easings', {}))
+        src_angles = dict(getattr(src, 'angles_deg', {}))
+        dst_angles = dict(getattr(dst, 'angles_deg', {}))
+
+        # 既存の src → dst エッジを削除
+        try:
+            for out_port in src.output_ports():
+                for cp in list(out_port.connected_ports()):
+                    if cp.node() is dst:
+                        out_port.disconnect_from(cp)
+        except Exception as _e:
+            print(f"[Divide] disconnect src→dst failed: {_e}")
+
+        # 名前生成のヘルパは CustomViewer 側に実装されているので viewer 経由で呼ぶ
+        viewer = self.viewer()
+        if viewer and hasattr(viewer, '_collect_graph_name_set'):
+            taken_names = viewer._collect_graph_name_set()
+        else:
+            taken_names = set()
+        src_pose_name = getattr(src, 'pose_name', src.name())
+
+        # 新規ノード生成
+        new_nodes = []
+        for i in range(1, n_new + 1):
+            t = float(i) / float(segs)  # 0 < t < 1
+            pos_x = sx + (dx - sx) * t
+            pos_y = sy + (dy - sy) * t
+
+            new_node = self.create_node('motion.nodes.PoseNode')
+            if new_node is None:
+                print(f"[Divide] create_node failed at i={i}")
+                continue
+            new_node.set_pos(pos_x, pos_y)
+            new_node.set_color(*NODE_COLOR_DEFAULT)
+            # CustomViewer._next_unique_numbered_name は @staticmethod
+            new_node.pose_name = CustomViewer._next_unique_numbered_name(src_pose_name, taken_names)
+            new_node.set_name(new_node.pose_name)
+            new_node.duration = getattr(src, 'duration', 1.0)
+            new_node.frames = per_frames
+
+            # スライダー値 = start + easing(t) * (end - start)
+            # ここで使う easing は「補間の形状を決める入力」。
+            # chosen_easing 指定時は一律その形、無指定時はジョイント毎の遷移先 easing を尊重。
+            new_angles = {}
+            for jname, dst_val in dst_angles.items():
+                start_val = src_angles.get(jname, dst_val)
+                if chosen_easing is not None:
+                    joint_ease = chosen_easing
+                else:
+                    joint_ease = dst_easings.get(jname, EASING_OPTIONS[0])
+                try:
+                    eased_t = easing_value(joint_ease, t)
+                except Exception:
+                    eased_t = t
+                new_angles[jname] = start_val + (dst_val - start_val) * eased_t
+            new_node.angles_deg = new_angles
+
+            # 分割によってイージングは "消費" され、区間ごとの遷移は直線化されるため
+            # 生成ノードの easing は常に全ジョイント linear。
+            new_node.joint_easings = {j: EASING_OPTIONS[0] for j in dst_angles.keys()}
+
+            new_nodes.append(new_node)
+
+        # 接続を張り直す: src → new1 → ... → newN → dst
+        chain = [src] + new_nodes + [dst]
+        for i in range(len(chain) - 1):
+            a, b = chain[i], chain[i + 1]
+            try:
+                out_ports = a.output_ports()
+                in_ports = b.input_ports()
+                if out_ports and in_ports:
+                    out_ports[0].connect_to(in_ports[0])
+            except Exception as _e:
+                print(f"[Divide] connect {a.name()}→{b.name()} failed: {_e}")
+
+        # 遷移先のフレーム更新（端数を吸収）
+        dst.frames = per_frames + remainder
+        if remainder != 0:
+            print(f"[Divide] frames not divisible: total={total_frames}, "
+                  f"segs={segs}, per={per_frames}, remainder={remainder} → 遷移先に加算")
+
+        # 遷移先の easing を確定
+        # 分割によりイージングは "消費" され、遷移先までの区間も直線化されるため、
+        # 遷移先の全ジョイントは常に linear にリセットする（遷移元だけが元の設定を保持）。
+        desired_dst_easings = {j: EASING_OPTIONS[0] for j in dst_angles.keys()}
+        dst.joint_easings = desired_dst_easings
+        # dst.angles_deg は変更しないが、選択変更時のポーラーで書き戻される可能性があるので
+        # スナップショットを取っておく
+        desired_dst_angles = dict(dst_angles)
+
+        # 生成ノードを選択状態にする
+        try:
+            for _n in list(self.selected_nodes()):
+                _n.set_selected(False)
+            for _n in new_nodes:
+                _n.set_selected(True)
+        except Exception:
+            pass
+
+        # 200ms周期のセレクション監視ポーラーが on_node_selection_changed → _save_to_node を
+        # 呼び、ジョイントエディタ表示中のジョイント easings（欠損は linear 既定で埋められる）
+        # を current_pose_node(=dst になり得る) に書き戻して dst.joint_easings が汚染される。
+        # ポーラーが発火した後（>200ms）に狙って dst の joint_easings / angles_deg を復元する。
+        def _restore_dst_state(_node=dst,
+                                _easings=desired_dst_easings,
+                                _angles=desired_dst_angles):
+            try:
+                _node.joint_easings = dict(_easings)
+                _node.angles_deg = dict(_angles)
+            except Exception as _err:
+                print(f"[Divide] restore dst state failed: {_err}")
+
+        # 複数回スケジュールしてタイミングブレを吸収
+        QtCore.QTimer.singleShot(260, _restore_dst_state)
+        QtCore.QTimer.singleShot(500, _restore_dst_state)
+
+        print(f"[Divide] Inserted {len(new_nodes)} node(s) between "
+              f"{src.name()} and {dst.name()} (per={per_frames}F, dst={dst.frames}F)")
 
     def custom_mouse_press(self, event):
         """カスタムマウスプレスイベントハンドラ"""
@@ -7324,6 +7939,8 @@ class JointEditorPanel(QtWidgets.QWidget):
     """関節角度をSlider+SpinBoxで編集するパネル"""
 
     angles_changed = QtCore.Signal(dict)
+    # Live チェックボックス切替シグナル（3Dビュー側と同期する）
+    live_toggled = QtCore.Signal(bool)
 
     def __init__(self, parent=None):
         super(JointEditorPanel, self).__init__(parent)
@@ -7435,6 +8052,18 @@ class JointEditorPanel(QtWidgets.QWidget):
         self._lr_swap_btn.setToolTip("Swap left and right joint angles")
         self._lr_swap_btn.clicked.connect(self._on_lr_swap)
         pose_meta_layout.addWidget(self._lr_swap_btn)
+
+        # Live: スライダー/3Dビューでの角度変更をリアルタイムに Valkey へ送る
+        # 3Dビュー側の Live と同期。Valkey が OFF のときは外部から disabled にされる。
+        _live_initial = bool(load_app_settings().get("valkey_live_enabled", False))
+        self.live_check = QtWidgets.QCheckBox("Live")
+        self.live_check.setChecked(_live_initial)
+        self.live_check.setEnabled(False)  # 起動直後は Valkey 状態を見て親から有効化
+        self.live_check.setToolTip(
+            "Realtime: send angle changes to Valkey while dragging sliders / 3D view"
+        )
+        self.live_check.toggled.connect(lambda v: self.live_toggled.emit(v))
+        pose_meta_layout.addWidget(self.live_check)
 
         pose_meta_layout.addStretch()
         self.main_layout.addWidget(self.pose_meta_widget)
@@ -12459,6 +13088,95 @@ if __name__ == '__main__':
         # 起動時に現在のチェック状態で初期化
         on_valkey_toggled(stl_viewer.valkey_check.isChecked())
 
+        # --- Live: スライダー/3D で角度を動かしたときに Valkey へリアルタイム送信 ---
+        # 3Dビュー(stl_viewer.live_check) と JointEditor(joint_editor.live_check) の
+        # 2つのチェックボックスが存在し、on/off が連動する。
+        # 送信は 30ms のシングルショットタイマーでスロットル（最新値のみ送る）。
+        live_state = {
+            "enabled": bool(stl_viewer.live_check.isChecked()
+                            and stl_viewer.valkey_check.isChecked()),
+            "pending": None,
+            "syncing": False,  # 相互 sync 中の無限ループ防止
+        }
+        live_flush_timer = QtCore.QTimer()
+        live_flush_timer.setSingleShot(True)
+        live_flush_timer.setInterval(30)
+
+        def _live_flush():
+            angles = live_state["pending"]
+            live_state["pending"] = None
+            if angles is None:
+                return
+            if not live_state["enabled"]:
+                return
+            try:
+                lme_valkey.write_angles(angles)
+            except Exception as _e:
+                print(f"[Live] write_angles failed: {_e}")
+
+        live_flush_timer.timeout.connect(_live_flush)
+
+        def live_schedule_write(angles):
+            if not live_state["enabled"]:
+                return
+            live_state["pending"] = dict(angles) if angles else {}
+            if not live_flush_timer.isActive():
+                live_flush_timer.start()
+
+        # JointEditor の Live 初期状態を stl_viewer に合わせる（起動時のみ）
+        joint_editor.live_check.setEnabled(stl_viewer.valkey_check.isChecked())
+        joint_editor.live_check.setChecked(stl_viewer.live_check.isChecked())
+
+        def _live_send_now():
+            """Live ON になった瞬間、その時点の関節値を1回 Valkey へ即時送信する。
+            スロットルタイマーを迂回して即時 write。"""
+            if not live_state["enabled"]:
+                return
+            try:
+                angles = joint_editor.get_angles_for_3d()
+                lme_valkey.write_angles(angles)
+                print(f"[Live] Sent initial snapshot ({len(angles)} joints) on Live ON")
+            except Exception as _e:
+                print(f"[Live] initial snapshot send failed: {_e}")
+
+        def _on_live_toggled_from_stl(v):
+            if live_state["syncing"]:
+                return
+            live_state["syncing"] = True
+            joint_editor.live_check.setChecked(bool(v))
+            live_state["syncing"] = False
+            live_state["enabled"] = bool(v) and stl_viewer.valkey_check.isChecked()
+            if live_state["enabled"]:
+                _live_send_now()
+
+        def _on_live_toggled_from_editor(v):
+            if live_state["syncing"]:
+                return
+            live_state["syncing"] = True
+            stl_viewer.live_check.setChecked(bool(v))
+            live_state["syncing"] = False
+            live_state["enabled"] = bool(v) and stl_viewer.valkey_check.isChecked()
+            if live_state["enabled"]:
+                _live_send_now()
+
+        stl_viewer.live_toggled.connect(_on_live_toggled_from_stl)
+        joint_editor.live_toggled.connect(_on_live_toggled_from_editor)
+
+        def _on_valkey_toggled_for_live_sync(v):
+            # Valkey OFF になったら JointEditor 側の Live も強制 OFF + disabled
+            joint_editor.live_check.setEnabled(bool(v))
+            if not v and joint_editor.live_check.isChecked():
+                # stl_viewer 側は stl_viewer._on_valkey_toggled_for_live で既にクリア
+                live_state["syncing"] = True
+                joint_editor.live_check.setChecked(False)
+                live_state["syncing"] = False
+            live_state["enabled"] = (
+                stl_viewer.live_check.isChecked() and bool(v)
+            )
+        stl_viewer.valkey_toggled.connect(_on_valkey_toggled_for_live_sync)
+        # 起動時反映
+        _on_valkey_toggled_for_live_sync(stl_viewer.valkey_check.isChecked())
+
         right_layout.addWidget(playback_bar)
 
         # Initialize FPS from settings
@@ -12722,6 +13440,8 @@ if __name__ == '__main__':
             if rm:
                 rm.apply_joint_angles(angles)
                 stl_viewer.safe_render()
+            # Live ON なら 30ms スロットルで Valkey へ書き込む
+            live_schedule_write(angles)
 
         def on_single_joint_changed(joint_name, angle_deg):
             """ダイアログからの単一ジョイント角度変更時"""
@@ -12732,6 +13452,8 @@ if __name__ == '__main__':
             joint_editor._update_slider(joint_name, ui_angle)
             # 現在のノードに保存
             joint_editor._save_to_node()
+            # Live ON なら現在の全関節を Valkey へ 30ms スロットルで送信
+            live_schedule_write(joint_editor.get_angles_for_3d())
 
         def on_node_selection_changed():
             """ノード選択変更時"""
@@ -13165,7 +13887,9 @@ if __name__ == '__main__':
                 joint_editor.set_angles(joint_editor.fk_to_ui_angles(fk_angles))
                 # ノードに保存
                 joint_editor._save_to_node()
-                lme_valkey.write_angles(fk_angles)
+                # Live ON のときだけ Valkey へ送信（Live OFF なら書き込まない）
+                if live_state["enabled"]:
+                    lme_valkey.write_angles(fk_angles)
             else:
                 dbg("[TRIGGER]", "robot_model is None, skip")
 
@@ -13598,6 +14322,45 @@ if __name__ == '__main__':
         _undo_app_filter = _UndoAppFilter(main_window)
         QtWidgets.QApplication.instance().installEventFilter(_undo_app_filter)
         # ---- End Undo / Redo system ----
+
+        # ---- Blender-style camera view shortcuts (global 0-9) ----
+        # 3D ビュー内でクリックしていなくても 0-9 でカメラビュー切替できるように
+        # アプリレベルでキー入力を捕まえて stl_viewer.  _handle_camera_view_key に流す。
+        # テキスト編集中の widget (QLineEdit / QSpinBox 等) にフォーカスがある場合は
+        # 数字入力を優先し、こちらは何もしない。
+        _CAMERA_DIGIT_KEYS = (
+            QtCore.Qt.Key_0, QtCore.Qt.Key_1, QtCore.Qt.Key_2, QtCore.Qt.Key_3,
+            QtCore.Qt.Key_4, QtCore.Qt.Key_5, QtCore.Qt.Key_6, QtCore.Qt.Key_7,
+            QtCore.Qt.Key_8, QtCore.Qt.Key_9,
+        )
+
+        class _CameraKeyAppFilter(QtCore.QObject):
+            def eventFilter(self, obj, event):
+                if event.type() != QtCore.QEvent.KeyPress:
+                    return False
+                if event.key() not in _CAMERA_DIGIT_KEYS:
+                    return False
+                mods = event.modifiers()
+                # 修飾キー付きは触らない（Ctrl+1 等のショートカット/入力に譲る）
+                if bool(mods & (QtCore.Qt.ControlModifier | QtCore.Qt.MetaModifier |
+                                QtCore.Qt.AltModifier | QtCore.Qt.ShiftModifier)):
+                    return False
+                # テキスト編集中は数字入力を優先
+                fw = QtWidgets.QApplication.focusWidget()
+                if isinstance(fw, _TEXT_WIDGET_TYPES):
+                    return False
+                # STL ビューアが未初期化なら何もしない
+                if 'stl_viewer' not in globals() or stl_viewer is None:
+                    return False
+                try:
+                    if stl_viewer._handle_camera_view_key(event):
+                        return True
+                except Exception as _e:
+                    print(f"[Camera] app filter error: {_e}")
+                return False
+
+        _camera_key_filter = _CameraKeyAppFilter(main_window)
+        QtWidgets.QApplication.instance().installEventFilter(_camera_key_filter)
 
         def make_empty_motion_action_data():
             rm = motion_state["robot_model"]

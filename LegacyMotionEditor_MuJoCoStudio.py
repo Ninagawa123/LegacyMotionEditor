@@ -525,12 +525,27 @@ def generate_play_mjcf(src_path: str, out_path: str,
             logger.error("MJCF parse failed: %s", e)
             return False
 
+    # Read original meshdir before removing compiler (e.g. NE555 uses meshdir="assets").
+    src_dir = os.path.dirname(os.path.abspath(src_path))
+    compiler_el = root.find("compiler")
+    orig_meshdir = compiler_el.get("meshdir", "") if compiler_el is not None else ""
+
     for tag in ("compiler", "option"):
         for el in list(root.findall(tag)):
             root.remove(el)
+
+    # Resolve actual mesh directory, accounting for the original meshdir attribute.
+    if orig_meshdir:
+        actual_mesh_dir = (orig_meshdir if os.path.isabs(orig_meshdir)
+                           else os.path.normpath(os.path.join(src_dir, orig_meshdir)))
+    else:
+        actual_mesh_dir = src_dir
+
     # meshdir is relative to the MAIN scene XML (log/_active_scene.xml).
     main_xml_dir = os.path.abspath(main_xml_dir or os.path.dirname(out_path))
-    meshdir_rel = _meshdir_rel_to_main(src_path, main_xml_dir)
+    rel = os.path.relpath(actual_mesh_dir, main_xml_dir).replace("\\", "/")
+    meshdir_rel = "" if rel == "." else rel
+
     comp = ET.Element("compiler")
     comp.set("angle", "radian")
     comp.set("autolimits", "true")
@@ -650,6 +665,12 @@ class StudioApp:
         self.win_w = WIDTH_DEFAULT
         self.win_h = HEIGHT_DEFAULT
 
+        # ブレンダー風 0-9 カメラショートカット用のカスタム保存視点。
+        # マウスドラッグ/ホイールで動くたびに更新し、0 キーで復元する。
+        self._saved_cam_state = None
+        # ドラッグ中にカメラが動いたことを検知するフラグ
+        self._cam_dirty_during_drag = False
+
     def _ensure_renderer(self) -> None:
         """(Re)create MuJoCo Renderer for the current window size."""
         if self.model is None:
@@ -662,6 +683,20 @@ class StudioApp:
             self.renderer = None
         w = max(WIDTH_MIN, int(self.win_w))
         h = max(HEIGHT_MIN, int(self.win_h))
+        # MuJoCo の offscreen framebuffer サイズを超えると Renderer 作成が失敗する
+        # (ValueError: Image width X > framebuffer width Y)。
+        # model.vis.global_.offwidth/offheight を上限にクランプする。
+        try:
+            max_w = int(self.model.vis.global_.offwidth)
+            max_h = int(self.model.vis.global_.offheight)
+            if max_w > 0 and w > max_w:
+                logger.warning("Clamping render width %d -> %d (model offwidth)", w, max_w)
+                w = max_w
+            if max_h > 0 and h > max_h:
+                logger.warning("Clamping render height %d -> %d (model offheight)", h, max_h)
+                h = max_h
+        except Exception as _e:
+            logger.warning("Could not read model offwidth/offheight: %s", _e)
         self.renderer = mujoco.Renderer(self.model, height=h, width=w)
 
     # ----- model / scene -----
@@ -715,6 +750,100 @@ class StudioApp:
             self.ctrl_arr[:n] = np.asarray(self.data.ctrl[:n])
         self._status = "Respawned"
         logger.info("Model respawned (R)")
+
+    # ----- Blender-style camera view shortcuts (numpad/main row 0..9) -----
+    def _snapshot_cam_state(self) -> None:
+        """マウスドラッグ/ズーム完了時に呼び、現在のカメラ状態を保存。
+        0 キーで復元される。"""
+        try:
+            self._saved_cam_state = {
+                "azimuth":   float(self.cam.azimuth),
+                "elevation": float(self.cam.elevation),
+                "distance":  float(self.cam.distance),
+                "lookat":    [float(x) for x in self.cam.lookat],
+            }
+        except Exception as _e:
+            logger.warning("cam snapshot failed: %s", _e)
+
+    def _restore_cam_state(self) -> None:
+        """保存カメラ状態を復元。無ければ何もしない。"""
+        s = self._saved_cam_state
+        if not s:
+            self._status = "No saved camera view"
+            return
+        try:
+            self.cam.azimuth   = s["azimuth"]
+            self.cam.elevation = s["elevation"]
+            self.cam.distance  = s["distance"]
+            self.cam.lookat[:] = s["lookat"]
+            self._status = "View: custom (saved)"
+        except Exception as _e:
+            logger.warning("cam restore failed: %s", _e)
+
+    def _set_standard_view(self, azimuth: float, elevation: float, label: str) -> None:
+        """方位/仰角のみ変更し、distance / lookat は現状維持。"""
+        self.cam.azimuth = float(azimuth)
+        self.cam.elevation = float(elevation)
+        self._status = f"View: {label}"
+
+    def _rotate_cam(self, d_azimuth: float, d_elevation: float) -> None:
+        """カメラを ±15° 回転（elevation は ±89° にクランプ）。"""
+        self.cam.azimuth = float(self.cam.azimuth) + float(d_azimuth)
+        new_el = float(self.cam.elevation) + float(d_elevation)
+        self.cam.elevation = max(-89.0, min(89.0, new_el))
+
+    def _flip_cam(self) -> None:
+        """lookat を対称中心として azimuth を 180° 反転。elevation は符号反転。"""
+        self.cam.azimuth = float(self.cam.azimuth) + 180.0
+        self.cam.elevation = -float(self.cam.elevation)
+        self._status = "View: flipped"
+
+    def _handle_camera_key(self, key: int) -> bool:
+        """0-9 (pygame.K_0..K_9 と K_KP0..K_KP9 の両対応) を受けて
+        ブレンダー風のカメラビュー変更を実行。処理したら True を返す。"""
+        # メイン行の数字キーとテンキーの数字キーの両方を単一の数値へマップ
+        _MAIN = {
+            pygame.K_0: 0, pygame.K_1: 1, pygame.K_2: 2, pygame.K_3: 3,
+            pygame.K_4: 4, pygame.K_5: 5, pygame.K_6: 6, pygame.K_7: 7,
+            pygame.K_8: 8, pygame.K_9: 9,
+        }
+        _KP = {
+            pygame.K_KP0: 0, pygame.K_KP1: 1, pygame.K_KP2: 2, pygame.K_KP3: 3,
+            pygame.K_KP4: 4, pygame.K_KP5: 5, pygame.K_KP6: 6, pygame.K_KP7: 7,
+            pygame.K_KP8: 8, pygame.K_KP9: 9,
+        }
+        n = _MAIN.get(key, _KP.get(key, None))
+        if n is None:
+            return False
+
+        if n == 0:
+            self._restore_cam_state()
+        elif n == 1:
+            # Front (+X から見る): MuJoCo は Z-up 右手系、azimuth=180 で -X 方向を見る
+            self._set_standard_view(azimuth=180, elevation=0, label="Front (1)")
+        elif n == 3:
+            # Right side (+Y から見る): azimuth=270（-Y 方向を見る）
+            self._set_standard_view(azimuth=270, elevation=0, label="Right (3)")
+        elif n == 7:
+            # Top (+Z から真下を見る)。elevation=-89 で真下、-90 は gimbal lock を避ける
+            self._set_standard_view(azimuth=180, elevation=-89, label="Top (7)")
+        elif n == 2:
+            self._rotate_cam(0, -15)
+            self._status = "Rotate down (2)"
+        elif n == 8:
+            self._rotate_cam(0, +15)
+            self._status = "Rotate up (8)"
+        elif n == 4:
+            self._rotate_cam(-15, 0)
+            self._status = "Rotate left (4)"
+        elif n == 6:
+            self._rotate_cam(+15, 0)
+            self._status = "Rotate right (6)"
+        elif n == 9:
+            self._flip_cam()
+        elif n == 5:
+            return False  # 5 は未割当
+        return True
 
     # ----- Valkey / motor -----
     def start_valkey(self) -> None:
@@ -892,7 +1021,10 @@ class StudioApp:
                             (self.win_w, self.win_h), pygame.RESIZABLE)
                         self._ensure_renderer()
                     elif event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_r:
+                        # ブレンダー風 0-9 カメラビュー切替を先に判定
+                        if self._handle_camera_key(event.key):
+                            pass  # 消費
+                        elif event.key == pygame.K_r:
                             self.respawn_model()
                         elif event.key == pygame.K_ESCAPE:
                             running = False
@@ -901,6 +1033,10 @@ class StudioApp:
                         self._orbit_btn = event.button
                         self._last_mouse = event.pos
                     elif event.type == pygame.MOUSEBUTTONUP:
+                        # ドラッグ中にカメラが動いていれば 0 キー復元用に保存
+                        if self._cam_dirty_during_drag:
+                            self._snapshot_cam_state()
+                            self._cam_dirty_during_drag = False
                         self._button_down = False
                     elif event.type == pygame.MOUSEMOTION and self._button_down:
                         dx = event.pos[0] - self._last_mouse[0]
@@ -915,9 +1051,12 @@ class StudioApp:
                             # Right-drag or Shift+left-drag: pan (lookat translation)
                             self.cam.lookat[0] -= dx * 0.002 * self.cam.distance
                             self.cam.lookat[1] += dy * 0.002 * self.cam.distance
+                        self._cam_dirty_during_drag = True
                     elif event.type == pygame.MOUSEWHEEL:
                         self.cam.distance = max(
                             0.2, self.cam.distance * (0.9 if event.y > 0 else 1.1))
+                        # ホイールズーム後もカスタム視点として保存
+                        self._snapshot_cam_state()
 
                 # Pick up the result of the background Docker/Valkey auto-start
                 if (self._valkey_autostart_done.is_set()
