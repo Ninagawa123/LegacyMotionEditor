@@ -39,6 +39,7 @@ import datetime
 import json
 import copy
 import math
+import unicodedata
 import time
 import numpy as np
 import threading
@@ -426,6 +427,10 @@ class CustomNodeItem(NodeItem):
             # 通常時は非表示にし、paint()で自前の色で描画。編集時（_title_editing）だけ表示
             self._title_editing = False
             text_item.setVisible(False)
+        # NodeGraphQt 標準の左上アイコン (node_base.png) を一括非表示にする
+        icon_item = getattr(self, '_icon_item', None)
+        if icon_item is not None:
+            icon_item.setVisible(False)
         self._align_ports(0.0)
         self._post_init_done = True
 
@@ -493,18 +498,34 @@ class CustomNodeItem(NodeItem):
         # NOTE: 非表示ポートも位置を設定する（後でvisibleにした時に正しい位置になるように）
         all_outputs = list(self.outputs)
         if all_outputs:
-            port_width = all_outputs[0].boundingRect().width()
-            port_height = all_outputs[0].boundingRect().height()
-            spacing = 8
-
-            total_width = (port_width * len(all_outputs)) + (spacing * (len(all_outputs) - 1))
-            port_x = (width - total_width) / 2
-            port_y = self._height - port_height - 5  # 下部のY座標
-
-            for port in all_outputs:
-                port.setPos(port_x, port_y)
+            # MemoNode 用の特殊配置: タイトル帯の左端に出力ポートを 1 つ置く
+            # (フラグ名は互換のため _memo_port_at_title_right のままだが、
+            #  位置は左端)
+            if getattr(self, "_memo_port_at_title_right", False):
+                port = all_outputs[0]
+                port_w = port.boundingRect().width()
+                port_h = port.boundingRect().height()
+                # タイトル帯の中心 Y を text_item から算出（無ければ大まかな 12px）
+                text_item = getattr(self, "_text_item", None)
+                if text_item is not None:
+                    title_center_y = text_item.pos().y() + text_item.boundingRect().height() / 2.0
+                else:
+                    title_center_y = 12.0
+                port.setPos(4, title_center_y - port_h / 2.0)
                 port.update()
-                port_x += port_width + spacing
+            else:
+                port_width = all_outputs[0].boundingRect().width()
+                port_height = all_outputs[0].boundingRect().height()
+                spacing = 8
+
+                total_width = (port_width * len(all_outputs)) + (spacing * (len(all_outputs) - 1))
+                port_x = (width - total_width) / 2
+                port_y = self._height - port_height - 5  # 下部のY座標
+
+                for port in all_outputs:
+                    port.setPos(port_x, port_y)
+                    port.update()
+                    port_x += port_width + spacing
 
         # 出力テキスト位置の調整（テキストを非表示に）
         for port, text in self._output_items.items():
@@ -612,11 +633,12 @@ class CustomNodeItem(NodeItem):
                 node_rect.width() - 2.0 * margin_side,
                 max(18.0, node_rect.bottom() - body_top - body_bottom_reserve),
             )
-            painter.drawText(
-                body_rect,
-                QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop,
-                body,
-            )
+            # 通常は中央寄せ。Memo など左寄せしたいノードは _body_align_left=True。
+            if getattr(self, "_body_align_left", False):
+                _align = QtCore.Qt.AlignLeft | QtCore.Qt.AlignTop
+            else:
+                _align = QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop
+            painter.drawText(body_rect, _align, body)
             painter.setFont(text_item.font())
         self._restore_node_cache_mode()
 
@@ -771,6 +793,15 @@ class CustomPipe(PipeItem):
 
         self._color = self._pipe_color_for_port(output_port)
         self.set_pipe_styling(color=self._color, width=2)
+        # Memo 由来のパイプは点線で描画
+        if self._is_memo_output_port(output_port):
+            try:
+                pen = self.pen()
+                pen.setStyle(QtCore.Qt.DotLine)
+                pen.setCapStyle(QtCore.Qt.RoundCap)
+                self.setPen(pen)
+            except Exception:
+                pass
 
     def _port_color_tuple(self, port):
         """NodeGraphQtのポート色をRGBタプルとして取得する"""
@@ -788,8 +819,35 @@ class CustomPipe(PipeItem):
             return tuple(int(v) for v in color[:3])
         return None
 
+    def _is_memo_output_port(self, output_port) -> bool:
+        """出力ポートが MemoNode 由来かを判定する。"""
+        if output_port is None:
+            return False
+        port_node = getattr(output_port, "node", None)
+        if port_node is None:
+            return False
+        try:
+            model_node = getattr(port_node, "node", None)
+            if model_node is not None:
+                if type(model_node).__name__ == "MemoNode":
+                    return True
+                if getattr(type(model_node), "NODE_NAME", "") == "MemoNode":
+                    return True
+        except Exception:
+            pass
+        # port.color がメモ用の色と完全一致する場合もメモ由来と判定
+        if self._port_color_tuple(output_port) == NODE_MEMO_OUTPUT_PORT_COLOR:
+            return True
+        return False
+
     def _pipe_color_for_port(self, output_port):
-        """赤ポッチから出る接続だけ赤、それ以外はミントグリーンにする"""
+        """出力ポートに応じてパイプ色を決める:
+        - 赤ポッチ (Branch to): 赤
+        - Memo (透明ポッチ): グレー
+        - その他: ミントグリーン
+        """
+        if self._is_memo_output_port(output_port):
+            return NODE_MEMO_PIPE_COLOR
         if self._port_color_tuple(output_port) == BRANCH_POINT_COLOR:
             return BRANCH_LINE_COLOR
         return MINT_GREEN_COLOR
@@ -802,6 +860,16 @@ class CustomPipe(PipeItem):
         else:
             self.set_pipe_styling(color=self._color, width=width, style=style)
         self._apply_direction_pointer_color(width=width)
+        # Memo 由来のパイプは点線で描画する。set_pipe_styling で pen の style が
+        # 上書きされるので、その後に DotLine に差し替える。
+        if self._is_memo_output_port(output_port):
+            try:
+                pen = self.pen()
+                pen.setStyle(QtCore.Qt.DotLine)
+                pen.setCapStyle(QtCore.Qt.RoundCap)
+                self.setPen(pen)
+            except Exception:
+                pass
 
     def _apply_direction_pointer_color(self, width=2):
         color = QtGui.QColor(*self._color)
@@ -1596,6 +1664,21 @@ class CustomViewer(NodeViewer):
                 except Exception as e:
                     print(f"[Duplicate] Error duplicating JumpNode: {e}")
                     traceback.print_exc()
+            elif isinstance(node, MemoNode):
+                try:
+                    new_node = self._graph.create_node('motion.nodes.MemoNode')
+                    if new_node:
+                        pos = node.pos()
+                        new_node.set_pos(pos[0] + offset_x, pos[1] + offset_y)
+                        new_node.set_name("Memo")
+                        new_node.memo_text = getattr(node, "memo_text", "") or ""
+                        new_node.modal_width = int(getattr(node, "modal_width", 420) or 420)
+                        new_node.modal_height = int(getattr(node, "modal_height", 320) or 320)
+                        new_node.refresh_body_text()
+                        print(f"[Duplicate] Created copy of MemoNode")
+                except Exception as e:
+                    print(f"[Duplicate] Error duplicating MemoNode: {e}")
+                    traceback.print_exc()
             elif isinstance(node, FooNode):
                 try:
                     new_node = self._graph.create_node('insilico.nodes.FooNode')
@@ -1735,6 +1818,12 @@ class CustomViewer(NodeViewer):
                     'jump_target_function': getattr(node, "jump_target_function", ""),
                     'out_port_labels': list(node.out_port_labels),
                     'out_port_priorities': list(node.out_port_priorities),
+                })
+            elif isinstance(node, MemoNode):
+                node_data.update({
+                    'memo_text': getattr(node, "memo_text", "") or "",
+                    'modal_width': int(getattr(node, "modal_width", 420) or 420),
+                    'modal_height': int(getattr(node, "modal_height", 320) or 320),
                 })
 
             clipboard_data.append(node_data)
@@ -1891,6 +1980,16 @@ class CustomViewer(NodeViewer):
                         new_node.out_port_priorities = list(out_priorities)
                         new_node.refresh_body_text()
                         QtCore.QTimer.singleShot(15, new_node._apply_jump_node_colors)
+
+                elif node_type == 'MemoNode':
+                    new_node = self._graph.create_node('motion.nodes.MemoNode')
+                    if new_node:
+                        new_node.set_pos(pos[0] + offset_x, pos[1] + offset_y)
+                        new_node.set_name("Memo")
+                        new_node.memo_text = data.get('memo_text', '') or ''
+                        new_node.modal_width = int(data.get('modal_width', 420) or 420)
+                        new_node.modal_height = int(data.get('modal_height', 320) or 320)
+                        new_node.refresh_body_text()
 
             except Exception as e:
                 print(f"[Paste] Error creating {node_type}: {e}")
@@ -4832,6 +4931,8 @@ class CustomNodeGraph(NodeGraph):
             print(f"Registered node type: {MixNode.NODE_NAME}")
             self.register_node(JumpNode)
             print(f"Registered node type: {JumpNode.NODE_NAME}")
+            self.register_node(MemoNode)
+            print(f"Registered node type: {MemoNode.NODE_NAME}")
 
         except Exception as e:
             print(f"Error registering node types: {str(e)}")
@@ -5902,6 +6003,18 @@ class CustomNodeGraph(NodeGraph):
             dlg.exec()
         except Exception as e:
             print(f"Error showing wait editor: {e}")
+            traceback.print_exc()
+
+    def show_memo_editor(self, node, screen_pos=None):
+        """MemoNode のテキスト編集モーダルを表示"""
+        try:
+            _dlg_parent = self.widget.window()
+            dlg = MemoEditDialog(node, parent=_dlg_parent)
+            if screen_pos:
+                dlg.move(screen_pos)
+            dlg.exec()
+        except Exception as e:
+            print(f"Error showing memo editor: {e}")
             traceback.print_exc()
 
     def show_branching_editor(self, node, screen_pos=None):
@@ -7767,6 +7880,205 @@ class JumpNode(BaseNode):
             except Exception as e:
                 print(f"[JumpNode] Error on double click: {e}")
                 traceback.print_exc()
+
+
+# ---------------------------------------------------------------------------
+# MemoNode — 純粋な注釈用ノード。Export では無視される。
+# 98% 白のタイトル/パネル。入力ポート無し、出力ポートは透明で見えないが
+# 実接続可能 (Export 時は無視)。ドット位置には memo_text のプレビュー (単一行
+# 末尾 ... クリップ) を描画。ダブルクリックで MemoEditDialog。
+# ---------------------------------------------------------------------------
+NODE_MEMO_TITLE_COLOR = (70, 70, 70)              # dark gray on white
+NODE_MEMO_TITLE_HIGHLIGHT_COLOR = (30, 60, 130)   # blue on selection
+# NodeGraphQt 親クラスの _paint_horizontal がタイトル領域に QColor(0,0,0,80)
+# を塗るので、それを完全に隠すには不透明な白を上塗りする必要がある。
+NODE_MEMO_TITLE_BG_COLOR = (250, 250, 250, 255)   # opaque 98% white
+NODE_MEMO_TITLE_BG_HIGHLIGHT_COLOR = (225, 235, 255, 255)
+NODE_MEMO_PANEL_BG_COLOR = (250, 250, 250)        # 98% white
+NODE_MEMO_PANEL_BG_HIGHLIGHT_COLOR = (240, 245, 255)
+# ポートの色: パネル色と揃えて視覚上見えないようにする
+NODE_MEMO_OUTPUT_PORT_COLOR = NODE_MEMO_PANEL_BG_COLOR
+NODE_MEMO_OUTPUT_PORT_BORDER_COLOR = NODE_MEMO_PANEL_BG_COLOR
+# Memo 由来のパイプ (矢印) の色: グレー
+NODE_MEMO_PIPE_COLOR = (140, 140, 140)
+
+
+class MemoNode(BaseNode):
+    """注釈用のメモノード。Export では無視される。"""
+
+    __identifier__ = "motion.nodes"
+    NODE_NAME = "MemoNode"
+    __view__ = CustomNodeItem
+
+    def __init__(self):
+        super(MemoNode, self).__init__(CustomNodeItem)
+        # 入力ポート無し（add_input を呼ばない）
+        self.output_count = 0
+        self._add_memo_output()
+
+        self.memo_text = ""
+        self.modal_width = 420
+        self.modal_height = 320
+        self.set_name("Memo")
+
+        # ポート配置をタイトル右端に切替えるフラグ (CustomNodeItem._align_ports_horizontal で参照)
+        self.view._memo_port_at_title_right = True
+        # 本文プレビューを左寄せ描画 (CustomNodeItem.paint で参照)
+        self.view._body_align_left = True
+
+        self._original_double_click = self.view.mouseDoubleClickEvent
+        self.view.mouseDoubleClickEvent = self._on_double_click
+
+        QtCore.QTimer.singleShot(20, self._apply_memo_colors)
+        # レイアウトが完全に整ってから再配置
+        QtCore.QTimer.singleShot(30, self._reposition_memo_port)
+
+    def _reposition_memo_port(self):
+        """ポートをタイトル右端に強制再配置。他のイベントで下部へ戻された場合の
+        リカバリ用。_align_ports_horizontal 内の分岐で通常時も同じ位置に配置される。"""
+        v = getattr(self, "view", None)
+        if v is None:
+            return
+        try:
+            v._memo_port_at_title_right = True
+            if hasattr(v, "_align_ports"):
+                v._align_ports(0.0)
+            v.update()
+        except Exception as _e:
+            print(f"[MemoNode] reposition port failed: {_e}")
+
+    def _add_memo_output(self):
+        self.output_count += 1
+        port_name = f"out_{self.output_count}"
+        super(MemoNode, self).add_output(port_name, display_name=False)
+        return port_name
+
+    def _apply_memo_colors(self):
+        v = getattr(self, "view", None)
+        if not v:
+            return
+        if hasattr(v, "set_title_color"):
+            v.set_title_color(
+                *NODE_MEMO_TITLE_COLOR,
+                highlight_color=NODE_MEMO_TITLE_HIGHLIGHT_COLOR,
+            )
+        if hasattr(v, "_title_bg_color"):
+            v._title_bg_color = QtGui.QColor(*NODE_MEMO_TITLE_BG_COLOR)
+        self.set_color(*NODE_MEMO_PANEL_BG_COLOR)
+        if hasattr(v, "set_normal_colors"):
+            v.set_normal_colors(
+                panel_bg=NODE_MEMO_PANEL_BG_COLOR,
+                input_port=NODE_MEMO_OUTPUT_PORT_COLOR,
+                input_port_border=NODE_MEMO_OUTPUT_PORT_BORDER_COLOR,
+                output_port=NODE_MEMO_OUTPUT_PORT_COLOR,
+                output_port_border=NODE_MEMO_OUTPUT_PORT_BORDER_COLOR,
+            )
+        if hasattr(v, "set_highlight_colors"):
+            v.set_highlight_colors(
+                panel_bg=NODE_MEMO_PANEL_BG_HIGHLIGHT_COLOR,
+                input_port=NODE_MEMO_OUTPUT_PORT_COLOR,
+                input_port_border=NODE_MEMO_OUTPUT_PORT_BORDER_COLOR,
+                output_port=NODE_MEMO_OUTPUT_PORT_COLOR,
+                output_port_border=NODE_MEMO_OUTPUT_PORT_BORDER_COLOR,
+            )
+        for port in self.output_ports():
+            port.color = NODE_MEMO_OUTPUT_PORT_COLOR
+            port.border_color = NODE_MEMO_OUTPUT_PORT_BORDER_COLOR
+        # タイトル背景も透明にする（title_bg_rgb は 4-tuple 対応）
+        v._normal_title_bg = NODE_MEMO_TITLE_BG_COLOR
+        v._highlight_title_bg = NODE_MEMO_TITLE_BG_HIGHLIGHT_COLOR
+        self.refresh_body_text()
+
+    # 東アジア幅ベースの重み: full-width / wide 文字は 2、それ以外は 1。
+    # 合計 24 単位まで表示し、超えたら文頭 + '...' に切る。
+    # これで全角 12 文字 / 半角 24 文字を上限として、文頭が確実に見える。
+    _MEMO_PREVIEW_MAX_WEIGHT = 24
+
+    @staticmethod
+    def _clip_text_east_asian(text: str, max_weight: int) -> str:
+        weight = 0
+        out = []
+        for ch in text:
+            w = 2 if unicodedata.east_asian_width(ch) in ("F", "W") else 1
+            if weight + w > max_weight:
+                return "".join(out) + "..."
+            weight += w
+            out.append(ch)
+        return "".join(out)
+
+    def refresh_body_text(self):
+        """メモ内容の単一行プレビュー。改行はスペースに置換。
+        東アジア幅で 24 単位 (全角 12 / 半角 24) 相当までを左寄せで見せ、
+        超えた分は '...' で終了。文頭が必ず読める。"""
+        v = getattr(self, "view", None)
+        if v is None:
+            return
+        text = (self.memo_text or "")
+        text = text.replace("\r\n", " ").replace("\n", " ").replace("\r", " ").strip()
+        if not text:
+            preview = "(empty)"
+        else:
+            preview = MemoNode._clip_text_east_asian(text, self._MEMO_PREVIEW_MAX_WEIGHT)
+        v._body_text = preview
+        v.update()
+
+    def _on_double_click(self, event):
+        if hasattr(self, "graph") and hasattr(self.graph, "show_memo_editor"):
+            try:
+                self.graph.show_memo_editor(self)
+            except Exception as e:
+                print(f"[MemoNode] Error on double click: {e}")
+                traceback.print_exc()
+
+
+class MemoEditDialog(QtWidgets.QDialog):
+    """MemoNode の本文を編集するリサイズ可能なテキストモーダル。
+    閉じたときに memo_text と modal サイズをノードへ保存する。"""
+
+    def __init__(self, memo_node, parent=None):
+        super(MemoEditDialog, self).__init__(parent)
+        self.memo_node = memo_node
+        self.setWindowTitle("Memo")
+        # ノードごとに保存されているモーダルサイズを復元
+        w = int(getattr(memo_node, "modal_width", 420) or 420)
+        h = int(getattr(memo_node, "modal_height", 320) or 320)
+        self.resize(w, h)
+        self.setMinimumSize(240, 140)
+        self.setSizeGripEnabled(True)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+        self._text = QtWidgets.QTextEdit(self)
+        self._text.setPlainText(getattr(memo_node, "memo_text", "") or "")
+        self._text.setAcceptRichText(False)
+        self._text.setLineWrapMode(QtWidgets.QTextEdit.WidgetWidth)
+        layout.addWidget(self._text, 1)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_row.addStretch()
+        close_btn = QtWidgets.QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        btn_row.addWidget(close_btn)
+        layout.addLayout(btn_row)
+
+    def accept(self):
+        self._save()
+        super(MemoEditDialog, self).accept()
+
+    def closeEvent(self, event):
+        self._save()
+        super(MemoEditDialog, self).closeEvent(event)
+
+    def _save(self):
+        try:
+            self.memo_node.memo_text = self._text.toPlainText()
+            self.memo_node.modal_width = int(self.width())
+            self.memo_node.modal_height = int(self.height())
+            if hasattr(self.memo_node, "refresh_body_text"):
+                self.memo_node.refresh_body_text()
+        except Exception as _e:
+            print(f"[MemoEditDialog] save failed: {_e}")
 
 
 JOINT_ROW_MIME_TYPE = "application/x-meridian-joint-row"
@@ -10403,6 +10715,7 @@ def build_motion_data_dict(urdf_path, robot_model, graph, playback_ctrl, joint_e
     mix_nodes = [n for n in graph.all_nodes() if isinstance(n, MixNode)]
     command_nodes = [n for n in graph.all_nodes() if isinstance(n, CommandNode)]
     jump_nodes = [n for n in graph.all_nodes() if isinstance(n, JumpNode)]
+    memo_nodes = [n for n in graph.all_nodes() if isinstance(n, MemoNode)]
     node_id_map = {}
     for i, node in enumerate(pose_nodes):
         node_id_map[id(node)] = f"pose_{i}"
@@ -10418,6 +10731,8 @@ def build_motion_data_dict(urdf_path, robot_model, graph, playback_ctrl, joint_e
         node_id_map[id(node)] = f"command_{i}"
     for i, node in enumerate(jump_nodes):
         node_id_map[id(node)] = f"jump_{i}"
+    for i, node in enumerate(memo_nodes):
+        node_id_map[id(node)] = f"memo_{i}"
 
     nodes_data = []
     for node in pose_nodes:
@@ -10548,6 +10863,18 @@ def build_motion_data_dict(urdf_path, robot_model, graph, playback_ctrl, joint_e
             "pos_y": node.pos()[1] if isinstance(node.pos(), (list, tuple)) else node.pos().y() if hasattr(node.pos(), "y") else 0,
             "out_port_labels": list(getattr(node, "out_port_labels", ["default"])),
             "out_port_priorities": list(getattr(node, "out_port_priorities", [0])),
+        })
+    for node in memo_nodes:
+        nid = node_id_map[id(node)]
+        nodes_data.append({
+            "id": nid,
+            "node_type": "memo",
+            "name": node.name(),
+            "memo_text": getattr(node, "memo_text", "") or "",
+            "modal_width": int(getattr(node, "modal_width", 420) or 420),
+            "modal_height": int(getattr(node, "modal_height", 320) or 320),
+            "pos_x": node.pos()[0] if isinstance(node.pos(), (list, tuple)) else node.pos().x() if hasattr(node.pos(), "x") else 0,
+            "pos_y": node.pos()[1] if isinstance(node.pos(), (list, tuple)) else node.pos().y() if hasattr(node.pos(), "y") else 0,
         })
 
     edges_data = []
@@ -10784,6 +11111,14 @@ def _write_action_data_to_xml(action_elem, data):
                 p_elem = ET.SubElement(ports_elem, "Port")
                 p_elem.set("label", label)
                 p_elem.set("priority", str(priorities[i] if i < len(priorities) else 0))
+
+        elif node_data.get("node_type") == "memo":
+            # 本文は特殊文字を含む可能性があるため CDATA として子要素に保持
+            node_elem.set("modal_width", str(int(node_data.get("modal_width", 420) or 420)))
+            node_elem.set("modal_height", str(int(node_data.get("modal_height", 320) or 320)))
+            memo_text = node_data.get("memo_text", "") or ""
+            text_elem = ET.SubElement(node_elem, "MemoText")
+            text_elem.text = memo_text
 
     # Edges (connections)
     edges_elem = ET.SubElement(action_elem, "Edges")
@@ -11150,6 +11485,18 @@ def _parse_action_data_from_xml(action_elem, global_data):
                         priorities.append(int(p_elem.get("priority", 0)))
                 node_data["out_port_labels"] = labels if labels else ["default"]
                 node_data["out_port_priorities"] = priorities if priorities else [0]
+
+            elif node_type == "memo":
+                try:
+                    node_data["modal_width"] = int(node_elem.get("modal_width", 420))
+                except (TypeError, ValueError):
+                    node_data["modal_width"] = 420
+                try:
+                    node_data["modal_height"] = int(node_elem.get("modal_height", 320))
+                except (TypeError, ValueError):
+                    node_data["modal_height"] = 320
+                text_elem = node_elem.find("MemoText")
+                node_data["memo_text"] = (text_elem.text or "") if text_elem is not None else ""
 
             nodes_data.append(node_data)
     data["nodes"] = nodes_data
@@ -11605,7 +11952,7 @@ def build_motion_export_csv(graph, robot_model):
     joint_order = list(robot_model.joint_order) if robot_model else []
     lines = []
     for node in nodes:
-        if isinstance(node, (DefineNode, WaitNode, BranchingNode, JumpNode)):
+        if isinstance(node, (DefineNode, WaitNode, BranchingNode, JumpNode, MemoNode)):
             continue
         row = [
             _csv_escape(getattr(node, "pose_name", node.name())),
@@ -11729,9 +12076,9 @@ def load_motion_data(data, graph, stl_viewer, joint_editor, playback_ctrl,
                     stl_viewer.reset_camera()
                     stl_viewer.safe_render()
 
-        # 既存の Pose / Define / Wait / Branch / Jump / Mix / Command ノードを削除
+        # 既存の Pose / Define / Wait / Branch / Jump / Mix / Command / Memo ノードを削除
         for n in list(graph.all_nodes()):
-            if isinstance(n, (PoseNode, DefineNode, WaitNode, BranchingNode, JumpNode, MixNode, CommandNode)):
+            if isinstance(n, (PoseNode, DefineNode, WaitNode, BranchingNode, JumpNode, MixNode, CommandNode, MemoNode)):
                 graph.remove_node(n)
 
         # Clean up orphaned pipes after node deletion
@@ -11903,6 +12250,26 @@ def load_motion_data(data, graph, stl_viewer, joint_editor, playback_ctrl,
                 priorities = nd.get("out_port_priorities", [0])
                 node.out_port_labels = list(labels)
                 node.out_port_priorities = list(priorities)
+                node_map[nid] = node
+                continue
+            if ntype == "memo":
+                node = graph.create_node(
+                    "motion.nodes.MemoNode",
+                    name=nd.get("name", "Memo"),
+                    pos=QtCore.QPointF(nd.get("pos_x", 0), nd.get("pos_y", 0)),
+                    skip_auto_position=True,
+                )
+                node.set_name(nd.get("name", "Memo"))
+                node.memo_text = nd.get("memo_text", "") or ""
+                try:
+                    node.modal_width = int(nd.get("modal_width", 420) or 420)
+                except (TypeError, ValueError):
+                    node.modal_width = 420
+                try:
+                    node.modal_height = int(nd.get("modal_height", 320) or 320)
+                except (TypeError, ValueError):
+                    node.modal_height = 320
+                node.refresh_body_text()
                 node_map[nid] = node
                 continue
             node = graph.create_node(
@@ -12386,7 +12753,7 @@ if __name__ == '__main__':
         _BUTTON_DISPLAY = {}  # ボタン表示名はキー名をそのまま使用
         # Define/Command/Mix をまとめた QComboBox のキー
         _ADD_SUB_KEY = "Add Define"
-        _ADD_SUB_ITEMS = ["Wait", "Define", "Command", "Mix"]
+        _ADD_SUB_ITEMS = ["Wait", "Define", "Command", "Mix", "Memo"]
 
         use_pc_pad_checkbox = [None]  # Padボタン横のチェックボックス
         for button_text in buttons.keys():
@@ -14084,6 +14451,8 @@ if __name__ == '__main__':
                 on_add_command()
             elif text == "Mix":
                 on_add_mix()
+            elif text == "Memo":
+                on_add_memo()
         buttons["Add Define"].menu().triggered.connect(_on_add_sub_action)
 
         def on_add_branching():
@@ -14203,6 +14572,39 @@ if __name__ == '__main__':
                 print(f"[Motion] Added MixNode: {new_node.name()}")
             except Exception as e:
                 print(f"[Motion] Error adding MixNode: {e}")
+                traceback.print_exc()
+
+        def on_add_memo():
+            """MemoNode を追加。純粋な注釈ノードで、Export では無視される。"""
+            push_undo()
+            try:
+                pos = QtCore.QPointF(0, 0)
+                selected_nodes = graph.selected_nodes()
+                if selected_nodes:
+                    selected_node = selected_nodes[0]
+                    selected_pos = selected_node.pos()
+                    if isinstance(selected_pos, (list, tuple)):
+                        base_x, base_y = selected_pos[0], selected_pos[1]
+                    elif hasattr(selected_pos, "x") and hasattr(selected_pos, "y"):
+                        base_x, base_y = selected_pos.x(), selected_pos.y()
+                    else:
+                        base_x, base_y = 0, 0
+                    pos = QtCore.QPointF(
+                        base_x + get_node_offset_x(), base_y + get_node_offset_y()
+                    )
+                idx = len([n for n in graph.all_nodes() if isinstance(n, MemoNode)])
+                new_node = graph.create_node(
+                    "motion.nodes.MemoNode",
+                    name=f"memo_{idx}",
+                    pos=pos,
+                    skip_auto_position=True,
+                )
+                new_node.set_pos(pos.x(), pos.y())
+                new_node.set_name("Memo")
+                new_node.refresh_body_text()
+                print(f"[Motion] Added MemoNode: {new_node.name()}")
+            except Exception as e:
+                print(f"[Motion] Error adding MemoNode: {e}")
                 traceback.print_exc()
 
         def on_add_jump():
@@ -15103,27 +15505,62 @@ if __name__ == '__main__':
                     if ret != QtWidgets.QMessageBox.Ok:
                         return
 
-                unsupported: list[str] = []
+                # CommandNode / MixNode は V1 カートリッジエクスポータで未対応。
+                # そのままエクスポートするとこれらのノードは "スキップ" され、
+                # LME 上の再生挙動と実機出力が食い違うことになる。
+                # ダイアログで明確に警告し、ユーザーに続行/中断を選ばせる。
+                unsupported: list[tuple[str, str, str]] = []  # (action_title, node_type, node_label)
+                counts = {"command": 0, "mix": 0}
                 for i, it in enumerate(items):
                     data = it.get("data") or {}
                     for node in data.get("nodes", []):
                         nt = node.get("node_type")
                         if nt in ("command", "mix"):
                             title = it.get("title") or f"Action_{i + 1}"
-                            unsupported.append(
-                                f"[{title}] {nt}: {node.get('name', node.get('id', ''))}"
-                            )
+                            label = node.get("name", node.get("id", ""))
+                            unsupported.append((title, nt, label))
+                            counts[nt] += 1
                 if unsupported:
-                    preview = "\n".join(unsupported[:10])
-                    more = f"\n... (+{len(unsupported) - 10} more)" if len(unsupported) > 10 else ""
-                    ret = QtWidgets.QMessageBox.warning(
-                        main_window, "Unsupported Node Types",
-                        "The V1 exporter does not handle CommandNode or MixNode.\n"
-                        "These nodes will be skipped (their outgoing connections are "
-                        "still followed).\n\nContinue anyway?\n\n" + preview + more,
-                        QtWidgets.QMessageBox.Ok | QtWidgets.QMessageBox.Cancel,
+                    preview_lines = [
+                        f"  • [{t}]  {nt.capitalize()}Node: {lbl}"
+                        for (t, nt, lbl) in unsupported[:10]
+                    ]
+                    preview = "\n".join(preview_lines)
+                    more = (f"\n  ... (+{len(unsupported) - 10} more)"
+                            if len(unsupported) > 10 else "")
+                    header = "⚠ 未対応ノードが含まれています / Unsupported nodes present\n"
+                    summary_line = (
+                        f"CommandNode: {counts['command']} 個   "
+                        f"MixNode: {counts['mix']} 個"
                     )
-                    if ret != QtWidgets.QMessageBox.Ok:
+                    body = (
+                        f"{header}\n"
+                        f"{summary_line}\n\n"
+                        "V1 Logic Cartridge exporter は CommandNode / MixNode を\n"
+                        "まだサポートしていません。これらのノードはスキップされ、\n"
+                        "書き出された Cartridge の動作は LME 上の再生と食い違い\n"
+                        "ます (機能が抜けた状態で出力されます)。\n\n"
+                        "The V1 exporter does not support CommandNode / MixNode.\n"
+                        "They will be skipped in the output, so the Cartridge\n"
+                        "behavior will differ from LME playback.\n\n"
+                        "続行しますか？ / Continue anyway?\n\n"
+                        f"{preview}{more}"
+                    )
+                    # critical アイコン + 明示的な "Skip & Export" / "Cancel" ボタン
+                    box = QtWidgets.QMessageBox(main_window)
+                    box.setIcon(QtWidgets.QMessageBox.Critical)
+                    box.setWindowTitle("Unsupported Node Types (V1)")
+                    box.setText(body)
+                    _btn_skip = box.addButton(
+                        "Skip and export anyway",
+                        QtWidgets.QMessageBox.AcceptRole,
+                    )
+                    _btn_cancel = box.addButton(
+                        "Cancel export", QtWidgets.QMessageBox.RejectRole
+                    )
+                    box.setDefaultButton(_btn_cancel)
+                    box.exec()
+                    if box.clickedButton() is not _btn_skip:
                         return
 
                 # Boot / Base selection dialog.

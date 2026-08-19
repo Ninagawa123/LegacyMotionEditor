@@ -8639,10 +8639,18 @@ def linearize_action_data(
                 _emit_pose(node)
             elif node_type == "define":
                 _emit_define(node)
+            elif node_type == "wait":
+                _emit_wait(node)
             elif node_type == "branch":
                 _emit_branch(node)
             elif node_type == "jump":
                 _emit_jump(node)
+            elif node_type == "memo":
+                # MemoNode は注釈用途のため Export では無視。警告も出さない。
+                # 出力エッジが繋がっていれば後続だけ辿る。
+                nxt = first_child(node_id, 0)
+                if nxt is not None:
+                    visit(nxt)
             elif node_type in ("command", "mix"):
                 add_warning(
                     node_id, node_type,
@@ -8685,6 +8693,21 @@ def linearize_action_data(
         node_to_line[node["id"]] = line_idx
         for jname in joints_used_local:
             result.joints_used.add(jname)
+
+        nxt = first_child(node["id"], 0)
+        if nxt is not None:
+            visit(nxt)
+
+    def _emit_wait(node: dict) -> None:
+        """WaitNode: N フレーム相当の時間、直前の目標値を保持したまま待つ。
+
+        MotionPlayer の POS 命令は target joints が空 dict なら補間対象が無く、
+        タイマーだけ進むので「その場で待つ」として機能する。Servo 側へは
+        新しい指令を送らないため、直前の Pose の目標値がそのまま保持される。
+        """
+        duration_ms = _pose_duration_ms(node, playback_fps)
+        line_idx = emit(({}, duration_ms))
+        node_to_line[node["id"]] = line_idx
 
         nxt = first_child(node["id"], 0)
         if nxt is not None:
