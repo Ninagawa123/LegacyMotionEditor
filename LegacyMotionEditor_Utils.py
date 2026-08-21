@@ -1524,15 +1524,16 @@ class _WinSpinBoxStyler(QtCore.QObject):
     every other widget type keeps the native Windows look untouched.
     """
 
-    def __init__(self, parent=None):
-        super(_WinSpinBoxStyler, self).__init__(parent)
-        self._fusion_style = QtWidgets.QStyleFactory.create("Fusion")
-
     def eventFilter(self, obj, event):
         if (event.type() == QtCore.QEvent.Polish
-                and isinstance(obj, QtWidgets.QAbstractSpinBox)
-                and self._fusion_style is not None):
-            obj.setStyle(self._fusion_style)
+                and isinstance(obj, QtWidgets.QAbstractSpinBox)):
+            # A fresh, unparented QStyle per widget: QWidget.setStyle() makes
+            # the widget the style's owner, so sharing one QStyle instance
+            # across widgets causes a use-after-free once the first owning
+            # widget is destroyed (RuntimeError: already deleted).
+            style = QtWidgets.QStyleFactory.create("Fusion")
+            if style is not None:
+                obj.setStyle(style)
         return False
 
 
