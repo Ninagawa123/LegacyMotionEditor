@@ -3842,14 +3842,19 @@ class STLViewerWidget(QtWidgets.QWidget):
                 self.setFocus(QtCore.Qt.MouseFocusReason)
 
                 if event.button() == QtCore.Qt.LeftButton:
-                    # 左クリック: メッシュをピック
-                    actor = self.pick_actor_at(mouse_pos.x(), mouse_pos.y())
-                    if actor:
-                        self.select_mesh(actor)
-                        # 選択したメッシュでドラッグ開始
-                        self.start_joint_drag(mouse_pos)
+                    # Shift+左ドラッグは「中ドラッグ相当のパン」。メッシュピックも
+                    # 関節ドラッグ開始もせず、以降の MouseMove でパン処理を行う。
+                    if event.modifiers() & QtCore.Qt.ShiftModifier:
+                        pass
                     else:
-                        self.deselect_mesh()
+                        # 左クリック: メッシュをピック
+                        actor = self.pick_actor_at(mouse_pos.x(), mouse_pos.y())
+                        if actor:
+                            self.select_mesh(actor)
+                            # 選択したメッシュでドラッグ開始
+                            self.start_joint_drag(mouse_pos)
+                        else:
+                            self.deselect_mesh()
                 return True
 
             elif event.type() == QtCore.QEvent.MouseMove and self.last_mouse_pos:
@@ -3860,6 +3865,44 @@ class STLViewerWidget(QtWidgets.QWidget):
                     if self.is_dragging_joint:
                         # 関節ドラッグ中
                         self.update_joint_drag(mouse_pos)
+                    elif event.modifiers() & QtCore.Qt.ShiftModifier:
+                        # Shift+左ドラッグ = スクリーン平面上でのパン。
+                        # カメラの向きに追従して「ドラッグ方向にモデルが動く」
+                        # 感覚にするため、world XY 固定ではなく **カメラの
+                        # screen_right / view_up** をベースに動かす。
+                        camera = self.renderer.GetActiveCamera()
+                        scale = camera.GetParallelScale()
+                        pos = np.array(camera.GetPosition(), dtype=float)
+                        focal = np.array(camera.GetFocalPoint(), dtype=float)
+                        view_up = np.array(camera.GetViewUp(), dtype=float)
+                        view_dir = focal - pos
+                        _vd_n = np.linalg.norm(view_dir)
+                        if _vd_n > 1e-9:
+                            view_dir /= _vd_n
+                        screen_right = np.cross(view_dir, view_up)
+                        _sr_n = np.linalg.norm(screen_right)
+                        if _sr_n > 1e-9:
+                            screen_right /= _sr_n
+                        _up_n = np.linalg.norm(view_up)
+                        if _up_n > 1e-9:
+                            view_up_n = view_up / _up_n
+                        else:
+                            view_up_n = view_up
+                        # ドラッグ方向 (右=+x, 下=+y) と同じ方向にモデルが動く
+                        # ように、カメラは逆方向にオフセットする。感度は
+                        # 従来 (中ドラッグ) と同じ scale * 0.002。
+                        factor = scale * 0.002
+                        world_shift = (
+                            -screen_right * (delta.x() * factor)
+                            + view_up_n * (delta.y() * factor)
+                        )
+                        new_focal = focal + world_shift
+                        new_pos = pos + world_shift
+                        camera.SetFocalPoint(*new_focal)
+                        camera.SetPosition(*new_pos)
+                        self.renderer.ResetCameraClippingRange()
+                        self.safe_render()
+                        self._camera_dirty_during_drag = True
                     else:
                         # カメラ回転
                         camera = self.renderer.GetActiveCamera()
@@ -9307,6 +9350,11 @@ class JointEditorPanel(QtWidgets.QWidget):
 
         ordered_joints = [j for j in previous_order if j in robot_model.joint_order]
         ordered_joints += [j for j in robot_model.joint_order if j not in ordered_joints]
+        # Passive (closed-loop 従属) joint は slider を持たせない。値は
+        # solve_passive_angles で active から自動計算される。
+        _passive = getattr(robot_model, 'passive_joints', set()) or set()
+        if _passive:
+            ordered_joints = [j for j in ordered_joints if j not in _passive]
 
         for jname in ordered_joints:
             jt = robot_model.joints[jname]
@@ -14151,12 +14199,15 @@ if __name__ == '__main__':
                 traceback.print_exc()
 
         def on_joint_angles_changed(angles):
-            """Joint Editor値変更時"""
+            """Joint Editor値変更時。angles は active joint (slider を持つもの) の
+            FK 空間角度。rm.apply_joint_angles が内部で passive を自動マージし 3D
+            を更新する。Valkey/Live 送信は active のみ (実機は passive モーターなし)。
+            """
             rm = motion_state['robot_model']
             if rm:
                 rm.apply_joint_angles(angles)
                 stl_viewer.safe_render()
-            # Live ON なら 30ms スロットルで Valkey へ書き込む
+            # Live ON なら 30ms スロットルで Valkey へ書き込む (active のみ)
             live_schedule_write(angles)
 
         def on_single_joint_changed(joint_name, angle_deg):
@@ -14612,7 +14663,9 @@ if __name__ == '__main__':
         # same data — guarded here by stl_viewer._vtk_lock, with the GL context never
         # leaving the GUI thread. Same split on macOS and Ubuntu.
         def on_playback_pose(angles):
-            """再生中の姿勢更新（Poseベース再生。計算モーションは IK ワーカー側）"""
+            """再生中の姿勢更新（Poseベース再生。計算モーションは IK ワーカー側）。
+            fk_angles は active joint のみ。rm.apply_joint_angles が passive を
+            自動マージ。Valkey 送信は active のみ (on_joint_angles_changed と同方針)。"""
             rm = motion_state['robot_model']
             fk_angles = joint_editor.get_angles_for_3d(angles)
             if rm:

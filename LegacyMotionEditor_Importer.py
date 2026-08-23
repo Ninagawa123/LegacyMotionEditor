@@ -9358,6 +9358,25 @@ class URDFRobotModel:
         self.child_map = {}
         self.renderer = None
         self.current_angles = {}  # 現在の関節角度を保持
+        # --- Closed-loop 支援 (MJCF 由来のみ; URDF は空のまま) -------------------
+        # active_joints:   <actuator> で駆動される joint 名。
+        # passive_joints:  actuator 無しかつ closed loop 関与の joint 名。
+        #                  Slider から除外し、solve_passive_angles で自動計算する。
+        # closed_loops:    equality の raw 情報 (body1/body2/anchor)。
+        # mj_model/mj_data: MuJoCo の C ソルバに equality 制約を解かせるためのハンドル。
+        # mj_active_qpos_idx / mj_passive_qpos_idx: joint name -> qpos index キャッシュ。
+        self.actuator_joints: set = set()
+        self.passive_joints: set = set()
+        self.closed_loops: list = []
+        self.mj_model = None
+        self.mj_data = None
+        self.mj_active_qpos_idx: dict = {}
+        self.mj_passive_qpos_idx: dict = {}
+        # solver 呼び出し失敗を頻繁にログしないためのフラグ
+        self._mj_solver_ok: bool = True
+        # passive Newton IK の warm-start 用: 前回解の qpos [rad] を保存し、
+        # 次回呼び出しの初期推定として使う (別ブランチ跳躍を防ぐ)。
+        self._last_passive_qpos_rad: dict = {}
 
     def _find_mesh_file(self, mesh_basename, search_dirs=None):
         """メッシュファイルを複数のディレクトリから検索する
@@ -9928,9 +9947,30 @@ class URDFRobotModel:
         self.link_transforms.clear()
 
     def apply_joint_angles(self, angles_deg):
-        """FK計算してVTKアクターのトランスフォームを更新"""
+        """FK計算してVTKアクターのトランスフォームを更新。
+        passive_joints がある場合、angles_deg 中の active 分から passive を
+        MuJoCo で解いてマージするので、呼び出し側は active だけ渡してもよい
+        (呼び出し側が明示的に passive を含めても、こちらで再計算した値で上書きする)。
+        """
         if not self.root_link:
             return
+
+        # ---- 閉ループ passive の自動計算 (active → passive) ----
+        if self.passive_joints and self.mj_model is not None:
+            try:
+                # 呼び出し側が passive エントリを含んでいても、active 側から
+                # 再計算した値で上書きする (可視表示の一貫性を優先)
+                active_portion = {jn: v for jn, v in angles_deg.items()
+                                  if jn in self.actuator_joints}
+                if active_portion:
+                    passive_deg = self.solve_passive_angles(active_portion)
+                    if passive_deg:
+                        merged = dict(angles_deg)
+                        merged.update(passive_deg)
+                        angles_deg = merged
+            except Exception:
+                # ソルバ失敗時は元の angles_deg のまま処理を続ける (壊さない)
+                pass
 
         # 現在の角度を保存
         self.current_angles.update(angles_deg)
@@ -9999,6 +10039,170 @@ class URDFRobotModel:
     def get_current_angles(self):
         """全関節の現在の角度を取得"""
         return dict(self.current_angles)
+
+    # ---------- 閉ループ passive joint 解決 ---------------------------------
+    def solve_passive_angles(self, active_angles_deg: dict) -> dict:
+        """active joint 角度 (deg) から passive joint 角度 (deg) を計算する。
+
+        MuJoCo の mj_forward が equality (connect) 制約を満たすように
+        qpos を微調整するので、その結果の qpos を deg に戻して返す。
+
+        Args:
+            active_angles_deg: {joint_name: degrees} の dict。actuator が
+                ある joint に限定 (それ以外のキーは無視)。
+
+        Returns:
+            {joint_name: degrees} の dict。self.passive_joints に含まれる
+            joint 名のみ埋まる。MuJoCo が使えない場合や passive が無い場合は
+            空 dict を返す (呼び出し側でその値は変更しないという扱いにする)。
+        """
+        if not self.passive_joints or self.mj_model is None or self.mj_data is None:
+            return {}
+
+        try:
+            import math
+            import numpy as np
+            import mujoco  # type: ignore
+
+            model = self.mj_model
+            data = self.mj_data
+            # まず qpos を初期値に戻し、次に active を上書き。
+            mujoco.mj_resetData(model, data)
+            # active_angles_deg のうち qpos idx が判っているものだけ書き込む
+            for jn, deg in active_angles_deg.items():
+                adr = self.mj_active_qpos_idx.get(jn)
+                if adr is not None:
+                    try:
+                        data.qpos[adr] = math.radians(float(deg))
+                    except (TypeError, ValueError):
+                        pass
+            # Warm start: passive qpos に前回解を復元する (別ブランチ跳躍を防ぐ)。
+            # 初回は _last_passive_qpos_rad が空なので 0 のまま (mj_resetData 直後)。
+            for jn, adr in self.mj_passive_qpos_idx.items():
+                _warm = self._last_passive_qpos_rad.get(jn)
+                if _warm is not None:
+                    try:
+                        data.qpos[adr] = float(_warm)
+                    except Exception:
+                        pass
+            # 拘束を解く: mj_step は時間積分するため大変位で振動発散する。
+            # 代わりに Damped Least Squares Newton IK を直接まわす:
+            #   1. mj_forward で xpos/xmat 更新 (積分なし)
+            #   2. 各 <connect> equality の world 残差 r_i = p1 - p2 を計算
+            #   3. Jacobian J = d(r)/d(passive_qvel) を mj_jac で組む
+            #   4. DLS: dq = -(JᵀJ + λI)⁻¹ Jᵀr で passive qpos を更新
+            #   5. |r|_max < tol で収束扱い
+            _TOL_M = 1e-6      # 1 μm 以下でピッタリ (視覚上完全一致)
+            _MAX_ITER = 60
+            _DLS_LAMBDA = 1e-6
+
+            # 事前計算: passive の qpos/qvel address
+            _passive_qposadrs: list = []
+            _passive_dofadrs: list = []
+            for jn in self.mj_passive_qpos_idx.keys():
+                try:
+                    jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, jn)
+                    if jid >= 0:
+                        _passive_qposadrs.append(int(model.jnt_qposadr[jid]))
+                        _passive_dofadrs.append(int(model.jnt_dofadr[jid]))
+                except Exception:
+                    pass
+
+            # connect equality id リスト
+            _connect_ids = [i for i in range(model.neq)
+                            if int(model.eq_type[i]) == int(mujoco.mjtEq.mjEQ_CONNECT)]
+
+            if _passive_qposadrs and _connect_ids:
+                nv = int(model.nv)
+                jacp_buf = np.zeros((3, nv))
+                jacr_buf = np.zeros((3, nv))
+                _final_res = None
+
+                for _iter in range(_MAX_ITER):
+                    # active qpos は毎回強制設定 (前回の Newton 更新で
+                    # data.qpos[active] を触っていないので通常は不要だが安全側)
+                    for jn, deg in active_angles_deg.items():
+                        adr = self.mj_active_qpos_idx.get(jn)
+                        if adr is not None:
+                            try:
+                                data.qpos[adr] = math.radians(float(deg))
+                            except Exception:
+                                pass
+                    mujoco.mj_forward(model, data)
+
+                    # 残差 + Jacobian 組み立て
+                    residuals = []
+                    J_rows = []
+                    for eq_i in _connect_ids:
+                        b1 = int(model.eq_obj1id[eq_i])
+                        b2 = int(model.eq_obj2id[eq_i])
+                        a1 = np.asarray(model.eq_data[eq_i, :3], dtype=float)
+                        a2 = np.asarray(model.eq_data[eq_i, 3:6], dtype=float)
+                        p1 = data.xpos[b1] + data.xmat[b1].reshape(3, 3) @ a1
+                        p2 = data.xpos[b2] + data.xmat[b2].reshape(3, 3) @ a2
+                        residuals.append(p1 - p2)
+                        # Jacobian at world anchor points
+                        jacp_buf.fill(0.0)
+                        mujoco.mj_jac(model, data, jacp_buf, jacr_buf, p1, b1)
+                        J1 = jacp_buf.copy()
+                        jacp_buf.fill(0.0)
+                        mujoco.mj_jac(model, data, jacp_buf, jacr_buf, p2, b2)
+                        J2 = jacp_buf.copy()
+                        J_rows.append(J1 - J2)
+
+                    r_vec = np.concatenate(residuals)
+                    max_r = float(np.max(np.abs(r_vec)))
+                    _final_res = max_r
+                    if max_r < _TOL_M:
+                        break
+
+                    J_full = np.vstack(J_rows)              # (3*neq, nv)
+                    J_p = J_full[:, _passive_dofadrs]       # (3*neq, n_passive)
+                    JTJ = J_p.T @ J_p
+                    JTr = J_p.T @ r_vec
+                    reg = _DLS_LAMBDA * np.eye(len(_passive_dofadrs))
+                    try:
+                        dq = -np.linalg.solve(JTJ + reg, JTr)
+                    except np.linalg.LinAlgError:
+                        dq = -np.linalg.lstsq(J_p, r_vec, rcond=None)[0]
+                    # Apply to passive qpos (hinge/slide は qpos 1 要素 = qvel 1 要素)
+                    for i, adr in enumerate(_passive_qposadrs):
+                        data.qpos[adr] += float(dq[i])
+
+                # 収束状況を一度だけログ
+                if _final_res is not None and not getattr(self, '_solver_converged_logged', False):
+                    _mm = _final_res * 1000.0
+                    print(f"[MJCFRobotModel] passive solver: "
+                          f"max residual = {_mm:.6f} mm "
+                          f"({'converged' if _mm < _TOL_M * 1000.0 else 'partial'})")
+                    self._solver_converged_logged = True
+
+                # 最後に mj_forward を 1 回呼んで data.xpos 等を最新に
+                mujoco.mj_forward(model, data)
+            # passive の qpos を [-π, π] へラップして deg に変換し返す。
+            # 同時に _last_passive_qpos_rad を更新して次回の warm start に使う。
+            import math as _m
+            def _wrap_pi(a):
+                # atan2(sin, cos) で確実に [-π, π] へ
+                return _m.atan2(_m.sin(a), _m.cos(a))
+            out: dict = {}
+            for jn, adr in self.mj_passive_qpos_idx.items():
+                try:
+                    _raw = float(data.qpos[adr])
+                    _wrapped = _wrap_pi(_raw)
+                    # 次回 warm start に「ラップ済み値」を保存 (branch 固定)
+                    self._last_passive_qpos_rad[jn] = _wrapped
+                    out[jn] = math.degrees(_wrapped)
+                except (TypeError, ValueError):
+                    out[jn] = 0.0
+            self._mj_solver_ok = True
+            return out
+        except Exception as _e:
+            if self._mj_solver_ok:
+                print(f"[MJCFRobotModel] solve_passive_angles failed once: "
+                      f"{type(_e).__name__}: {_e} (further errors suppressed)")
+                self._mj_solver_ok = False
+            return {}
 
     def _fk_recursive(self, link_name, parent_world, angles_deg):
         """再帰的FK（後方互換性のために保持）"""
@@ -10253,6 +10457,101 @@ def build_robot_model_from_mjcf(mjcf_path, mjcf_data):
           f"{len(rm.joints)} joints, "
           f"{len(rm.joint_order)} revolute joints, "
           f"root={rm.root_link}")
+
+    # --- Closed-loop / passive joint 検出 ------------------------------------
+    # actuator を持たない joint のうち closed loop に絡むものを passive とする。
+    # UI (JointEditor) は passive を slider から隠し、solve_passive_angles で
+    # active から自動的に値を埋める。実機出力 (Meridim/Valkey) は active のみ。
+    try:
+        _closed_loops = list(mjcf_data.get('closed_loop_joints', []) or [])
+        rm.closed_loops = _closed_loops
+        rm.actuator_joints = set((mjcf_data.get('actuators') or {}).keys())
+
+        if _closed_loops:
+            # equality の 2 body を Union-Find で束ねて「ループ集合」を作る。
+            # 同じ集合に属す全 body の親チェーン (親側 joint 群) を「そのループに
+            # 関与する joint」とみなし、その中で actuator を持たないものを passive。
+            parent_of_body = {}
+            for j_data in mjcf_data.get('joints', []) or []:
+                child = j_data.get('child')
+                if child:
+                    parent_of_body[child] = (j_data.get('parent'), j_data.get('name'))
+
+            def _ancestor_joints(body_name):
+                """body から worldbody までの全 joint 名を集める。"""
+                joints_on_path = []
+                cur = body_name
+                _seen = set()
+                while cur and cur not in _seen:
+                    _seen.add(cur)
+                    entry = parent_of_body.get(cur)
+                    if entry is None:
+                        break
+                    parent, jname = entry
+                    if jname:
+                        joints_on_path.append(jname)
+                    cur = parent
+                return joints_on_path
+
+            # equality 毎に「ループに関与する joint」を集計
+            loop_joint_pool = set()
+            for cl in _closed_loops:
+                b1 = cl.get('parent') or cl.get('body1')
+                b2 = cl.get('child') or cl.get('body2')
+                for _b in (b1, b2):
+                    for jn in _ancestor_joints(_b):
+                        loop_joint_pool.add(jn)
+
+            # passive = ループに関わりつつ actuator が無い可動 (revolute) joint。
+            # fixed joint は動かないので除外 (slider にもそもそも出ない)。
+            rm.passive_joints = {
+                jn for jn in loop_joint_pool
+                if jn not in rm.actuator_joints
+                and jn in rm.joints
+                and rm.joints[jn].joint_type in ('revolute', 'continuous')
+            }
+        else:
+            rm.passive_joints = set()
+
+        print(f"[MJCFRobotModel] actuators={len(rm.actuator_joints)} "
+              f"passive={len(rm.passive_joints)} closed_loops={len(_closed_loops)}")
+        if rm.passive_joints:
+            print(f"[MJCFRobotModel] passive joints hidden from sliders: "
+                  f"{sorted(rm.passive_joints)}")
+
+        # MuJoCo モデルを load して solver 呼び出し準備。
+        # 未 install または load 失敗時は mj_model=None のまま (fallback で
+        # passive を identity/固定にする)。
+        if rm.passive_joints:
+            try:
+                import mujoco  # type: ignore
+                rm.mj_model = mujoco.MjModel.from_xml_path(mjcf_path)
+                rm.mj_data = mujoco.MjData(rm.mj_model)
+                # joint name -> qpos index を作る (hinge/slide のみ、adr が 1要素)
+                for i in range(rm.mj_model.njnt):
+                    jn = mujoco.mj_id2name(rm.mj_model,
+                                           mujoco.mjtObj.mjOBJ_JOINT, i) or ""
+                    if not jn:
+                        continue
+                    adr = int(rm.mj_model.jnt_qposadr[i])
+                    if jn in rm.actuator_joints:
+                        rm.mj_active_qpos_idx[jn] = adr
+                    elif jn in rm.passive_joints:
+                        rm.mj_passive_qpos_idx[jn] = adr
+                print(f"[MJCFRobotModel] MuJoCo solver ready: "
+                      f"nq={rm.mj_model.nq} active_qpos={len(rm.mj_active_qpos_idx)} "
+                      f"passive_qpos={len(rm.mj_passive_qpos_idx)}")
+            except Exception as _e:
+                print(f"[MJCFRobotModel] MuJoCo unavailable "
+                      f"({type(_e).__name__}: {_e}); passive will hold zeros")
+                rm.mj_model = None
+                rm.mj_data = None
+    except Exception as _e:
+        print(f"[MJCFRobotModel] passive detection failed: {_e}")
+        rm.actuator_joints = set()
+        rm.passive_joints = set()
+        rm.closed_loops = []
+
     return rm
 
 
