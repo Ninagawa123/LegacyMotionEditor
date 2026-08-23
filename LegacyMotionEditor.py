@@ -3,8 +3,8 @@ File Name: LegacyMotionEditor.py
 Description: Node-graph motion editor for URDF/MJCF robots (LegacyMotionEditor).
 
 Author      : Izumi Ninagawa
-Created On  : July 22, 2026
-Version     : 0.0.2
+Created On  : Aug 22, 2026
+Version     : 0.0.3
 License     : MIT License
 URL         : https://github.com/Ninagawa123/LegacyMotionEditor_alpha
 Copyright (c) 2026 Izumi Ninagawa
@@ -1744,15 +1744,17 @@ class CustomViewer(NodeViewer):
         if not nodes:
             return
 
-        # Store node data and connections
+        # Store node data and connections.
+        # BaseLinkNode (StartNode) は clipboard_data / connections の対象外なので、
+        # インデックスマップも「BaseLinkNode を除いたリスト」で作る。
+        # 以前は enumerate(nodes) で作っており、StartNode を選択に含めるだけで
+        # 以降の Pose の index が +1 ずれて、ペースト時に接続が壊れていた。
+        copyable_nodes = [n for n in nodes if not isinstance(n, BaseLinkNode)]
         clipboard_data = []
-        old_node_ids = set(id(n) for n in nodes)
-        node_id_to_index = {id(n): i for i, n in enumerate(nodes)}
+        old_node_ids = set(id(n) for n in copyable_nodes)
+        node_id_to_index = {id(n): i for i, n in enumerate(copyable_nodes)}
 
-        for node in nodes:
-            # Skip BaseLinkNode
-            if isinstance(node, BaseLinkNode):
-                continue
+        for node in copyable_nodes:
 
             node_data = {
                 'type': type(node).__name__,
@@ -1830,9 +1832,7 @@ class CustomViewer(NodeViewer):
 
         # Store connections (as indices into clipboard_data)
         connections = []
-        for node in nodes:
-            if isinstance(node, BaseLinkNode):
-                continue
+        for node in copyable_nodes:
             from_idx = node_id_to_index.get(id(node))
             if from_idx is None:
                 continue
@@ -3433,11 +3433,96 @@ class FlatComboButton(QtWidgets.QPushButton):
             self.setCurrentIndex(chosen.data())
 
 
+# ホイール操作時の Step 値スナップ列 (昇順)。0.1〜1 は疎に、1〜10 は 5/1、
+# 10 超は 5° 刻みで 180 まで。カスタム順序を単純化するためリテラル列挙。
+STEP_VALUE_SEQUENCE = (
+    [0.1, 0.2, 0.5, 1.0, 5.0] +
+    [float(v) for v in range(10, 181, 5)]
+)
+
+
+class StepValueDialog(QtWidgets.QDialog):
+    """3Dビュー「Step」右クリックで開く STEP 角度エディタ。
+
+    - 数値入力: 0.1〜180.0 の任意値を受け付ける (即時反映)
+    - マウスホイール: STEP_VALUE_SEQUENCE 上を 1 ステップずつ移動
+      (例: 14→wheel up→15, 14→wheel down→10, 5→wheel down→1→0.5→0.2→0.1)
+    - 0 にはならない (下限 0.1)
+    """
+
+    value_changed = QtCore.Signal(float)
+
+    def __init__(self, initial_deg: float, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("STEP")
+        # モードレスに近い挙動: フォーカスを失ったら閉じる。
+        self.setWindowFlags(
+            QtCore.Qt.Popup | QtCore.Qt.FramelessWindowHint
+        )
+        self.setStyleSheet("""
+            QDialog { background-color: #ffffff; border: 1px solid #888888; }
+            QLabel { color: #222222; font-size: 11px; }
+            QDoubleSpinBox { color: #111111; background-color: #f5f5f5;
+                             border: 1px solid #cccccc; padding: 2px 4px;
+                             font-size: 12px; min-width: 80px; }
+        """)
+
+        layout = QtWidgets.QHBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(6)
+
+        layout.addWidget(QtWidgets.QLabel("STEP:"))
+
+        self._spin = _StepSpinBox()
+        self._spin.setRange(0.1, 180.0)
+        self._spin.setDecimals(1)
+        self._spin.setSingleStep(0.1)
+        self._spin.setValue(max(0.1, min(180.0, float(initial_deg))))
+        self._spin.valueChanged.connect(self._on_spin_changed)
+        self._spin.setFocus()
+        self._spin.selectAll()
+        layout.addWidget(self._spin)
+
+        layout.addWidget(QtWidgets.QLabel("deg"))
+
+    def _on_spin_changed(self, v):
+        self.value_changed.emit(float(v))
+
+    def keyPressEvent(self, event):
+        if event.key() in (QtCore.Qt.Key_Escape, QtCore.Qt.Key_Return,
+                           QtCore.Qt.Key_Enter):
+            self.close()
+            return
+        super().keyPressEvent(event)
+
+
+class _StepSpinBox(QtWidgets.QDoubleSpinBox):
+    """StepValueDialog 内で使う、ホイール時のみ STEP_VALUE_SEQUENCE を歩く SpinBox。"""
+
+    def wheelEvent(self, event):
+        delta = event.angleDelta().y()
+        if delta == 0:
+            event.accept()
+            return
+        cur = float(self.value())
+        seq = STEP_VALUE_SEQUENCE
+        if delta > 0:
+            # 昇順で cur より真に大きい最初の要素
+            nxt = next((s for s in seq if s > cur + 1e-9), seq[-1])
+        else:
+            # 降順で cur より真に小さい最初の要素
+            nxt = next((s for s in reversed(seq) if s < cur - 1e-9), seq[0])
+        self.setValue(nxt)
+        event.accept()
+
+
 class STLViewerWidget(QtWidgets.QWidget):
     # 関節ドラッグ終了時のシグナル
     joint_drag_ended = QtCore.Signal()
     # ダイアログからの角度変更シグナル (joint_name, angle_deg)
     joint_angle_changed = QtCore.Signal(str, float)
+    # ホイール操作中: ノッチ毎に FK 空間の全関節角度を通知（Live 送信/スライダー反映用）
+    wheel_angles_updated = QtCore.Signal(dict)
     # Valkey チェックボックス切替シグナル
     valkey_toggled = QtCore.Signal(bool)
     # Live チェックボックス切替シグナル（JointEditor 側と同期する）
@@ -3518,6 +3603,20 @@ class STLViewerWidget(QtWidgets.QWidget):
         self.drag_joint_name_pair = None
         self.drag_start_angle_pair = 0.0
 
+        # ホイール回転セッション状態: マウスドラッグと同等の
+        # Pair / LinkGroup / step_snap / Valkey Live / Undo を実現する
+        self._wheel_active = False
+        self._wheel_joint_name = None
+        self._wheel_start_angle = 0.0
+        self._wheel_pair_name = None
+        self._wheel_start_angle_pair = 0.0
+        self._wheel_group_preset_idx = -1
+        self._wheel_group_base_angles = {}
+        self._wheel_stop_timer = QtCore.QTimer(self)
+        self._wheel_stop_timer.setSingleShot(True)
+        self._wheel_stop_timer.setInterval(180)
+        self._wheel_stop_timer.timeout.connect(self._on_wheel_stopped)
+
         # ハイライト点滅用タイマー
         self.highlight_timer = QtCore.QTimer()
         self.highlight_timer.timeout.connect(self._toggle_highlight)
@@ -3569,13 +3668,9 @@ class STLViewerWidget(QtWidgets.QWidget):
 
         # Right-top overlay panel: Step / Pair / Opp / Valkey
         _step_s = load_app_settings()
-
-        # Keep step_snap_spin hidden to preserve saved step value
-        self.step_snap_spin = QtWidgets.QSpinBox()
-        self.step_snap_spin.setRange(1, 90)
-        self.step_snap_spin.setValue(int(_step_s.get("vtk_drag_step_deg", 5)))
-        self.step_snap_spin.hide()
-        self.step_snap_spin.valueChanged.connect(self._save_step_settings)
+        # Step 設定は JointEditor 側 (joint_sliders_step_*) を単一の真実とする。
+        # 3D ビューのチェックは JointEditor と双方向同期し、deg 値は
+        # joint_editor.step_snapping_deg を参照する。
 
         self._overlay_panel = QtWidgets.QFrame(self)
         self._overlay_panel.setObjectName("vtkOverlay")
@@ -3599,8 +3694,9 @@ class STLViewerWidget(QtWidgets.QWidget):
         _ov_layout.setSpacing(4)
 
         self.step_snap_check = QtWidgets.QCheckBox("Step")
-        self.step_snap_check.setChecked(bool(_step_s.get("vtk_drag_step_enabled", False)))
-        self.step_snap_check.stateChanged.connect(self._save_step_settings)
+        # 初期値は JointEditor と同じキー (joint_sliders_step_snapping) を参照。
+        # main() 側で joint_editor.step_snapping_checkbox と双方向同期する。
+        self.step_snap_check.setChecked(bool(_step_s.get("joint_sliders_step_snapping", False)))
         _ov_layout.addWidget(self.step_snap_check)
 
         self.pair_check = QtWidgets.QCheckBox("Pair")
@@ -3830,15 +3926,7 @@ class STLViewerWidget(QtWidgets.QWidget):
                 if self.selected_link_name and self.robot_model:
                     joint_name, joint = self.find_joint_for_link(self.selected_link_name)
                     if joint_name:
-                        delta_angle = delta * MESH_WHEEL_SENSITIVITY
-                        current_angle = self.robot_model.get_joint_angle(joint_name)
-                        new_angle = current_angle + delta_angle
-                        new_angle = max(joint.limit_lower, min(joint.limit_upper, new_angle))
-
-                        angles = self.robot_model.get_current_angles()
-                        angles[joint_name] = new_angle
-                        self.robot_model.apply_joint_angles(angles)
-                        self.safe_render()
+                        self._apply_wheel_rotation(joint_name, joint, delta)
                         return True
 
                 # 非選択時はカメラズーム
@@ -4267,10 +4355,9 @@ class STLViewerWidget(QtWidgets.QWidget):
 
         # 新しい角度を計算（リミット適用）
         new_angle = self.drag_start_angle + delta_angle
-        if self.step_snap_check.isChecked():
-            step = self.step_snap_spin.value()
-            if step > 0:
-                new_angle = round(new_angle / step) * step
+        step = self._current_step_deg()
+        if step > 0:
+            new_angle = round(new_angle / step) * step
         new_angle = max(joint.limit_lower, min(joint.limit_upper, new_angle))
 
         # 角度を更新
@@ -4313,6 +4400,122 @@ class STLViewerWidget(QtWidgets.QWidget):
         self.robot_model.apply_joint_angles(angles)
         self.safe_render()
 
+    def _start_wheel_session(self, joint_name):
+        """マウスホイール回転セッションを開始。drag_start_* と同じ意味の基準を記録する。
+        既にセッション中で joint が変わった場合は、直前セッションを end してから開始。"""
+        if self._wheel_active and self._wheel_joint_name == joint_name:
+            return
+        if self._wheel_active:
+            # 別関節に切り替わったら、直前分をまず確定させる
+            self._on_wheel_stopped()
+
+        self._wheel_active = True
+        self._wheel_joint_name = joint_name
+        self._wheel_start_angle = self.robot_model.get_joint_angle(joint_name)
+
+        # Pair
+        self._wheel_pair_name = None
+        self._wheel_start_angle_pair = 0.0
+        if self.pair_check.isChecked():
+            pair_name = self._get_pair_joint_name(joint_name)
+            if pair_name and pair_name in self.robot_model.get_current_angles():
+                self._wheel_pair_name = pair_name
+                self._wheel_start_angle_pair = self.robot_model.get_joint_angle(pair_name)
+
+        # Link group
+        self._wheel_group_preset_idx = -1
+        self._wheel_group_base_angles = {}
+        je = self.joint_editor
+        if je and je.current_group_preset_index >= 0:
+            self._wheel_group_preset_idx = je.current_group_preset_index
+            self._wheel_group_base_angles = dict(self.robot_model.get_current_angles())
+
+    def _apply_wheel_rotation(self, joint_name, joint, delta):
+        """ホイール1ノッチ分の関節回転を適用する。
+        マウスドラッグ (update_joint_drag) と同じく Pair / LinkGroup / step_snap を尊重し、
+        ノッチ毎に wheel_angles_updated を発火して Live 送信/スライダー反映へ繋げる。
+        180ms 停止で _on_wheel_stopped が呼ばれ、joint_drag_ended 相当を発火する。"""
+        self._start_wheel_session(joint_name)
+
+        current_angle = self.robot_model.get_joint_angle(joint_name)
+        step = self._current_step_deg()
+        if step > 0:
+            # Snap ON: 1ノッチあたり ±1 グリッド分進める。加算量方式 (delta*sens
+            # を足して round) だと、1ノッチの delta_angle (通例 120*0.1=12°)
+            # が step/2 未満のとき round が元グリッドに戻して動かなくなる。
+            # (例: step=24 で threshold=12° / banker's rounding、step=90/180 で全く動かない)
+            # 方向のみを使い、現在角度から見て次のグリッド点へ移す。
+            if delta > 0:
+                new_angle = math.floor(current_angle / step + 1.0) * step
+            else:
+                new_angle = math.ceil(current_angle / step - 1.0) * step
+        else:
+            new_angle = current_angle + delta * MESH_WHEEL_SENSITIVITY
+        new_angle = max(joint.limit_lower, min(joint.limit_upper, new_angle))
+
+        angles = self.robot_model.get_current_angles()
+        angles[joint_name] = new_angle
+
+        # Pair 対応: drag と同じ effective_delta 計算
+        if self._wheel_pair_name:
+            effective_delta = new_angle - self._wheel_start_angle
+            if self._pair_should_negate(joint_name, self._wheel_pair_name):
+                effective_delta = -effective_delta
+            pair_joint = self.robot_model.joints.get(self._wheel_pair_name)
+            pair_angle = self._wheel_start_angle_pair + effective_delta
+            if pair_joint:
+                pair_angle = max(pair_joint.limit_lower,
+                                 min(pair_joint.limit_upper, pair_angle))
+            angles[self._wheel_pair_name] = pair_angle
+
+        # Link group 同期: drag と同じ比例配分
+        je = self.joint_editor
+        if (je and self._wheel_group_preset_idx >= 0 and
+                0 <= self._wheel_group_preset_idx < len(je.joint_group_presets)):
+            preset = je.joint_group_presets[self._wheel_group_preset_idx]
+            members = preset.get("members", {})
+            dragged_member = members.get(joint_name, {})
+            if dragged_member.get("enabled", False):
+                dragged_scale = float(dragged_member.get("scale", 1.0))
+                if abs(dragged_scale) > 1e-9:
+                    master_delta = (new_angle - self._wheel_start_angle) / dragged_scale
+                    for jname, member in members.items():
+                        if jname == joint_name:
+                            continue
+                        if not member.get("enabled", False):
+                            continue
+                        scale_j = float(member.get("scale", 1.0))
+                        base_j = self._wheel_group_base_angles.get(jname, 0.0)
+                        joint_j = self.robot_model.joints.get(jname)
+                        new_j = base_j + master_delta * scale_j
+                        if joint_j:
+                            new_j = max(joint_j.limit_lower,
+                                        min(joint_j.limit_upper, new_j))
+                        angles[jname] = new_j
+
+        self.robot_model.apply_joint_angles(angles)
+        self.safe_render()
+
+        # ノッチ毎に JointEditor スライダー反映 + Valkey Live 送信を要求
+        self.wheel_angles_updated.emit(dict(angles))
+
+        # 停止検出タイマーをリスタート
+        self._wheel_stop_timer.start()
+
+    def _on_wheel_stopped(self):
+        """ホイールが 180ms 止まったら、drag 終了と同じ後処理を行う:
+        push_undo + JointEditor 反映 + node 保存 + Live ON なら Valkey 一発書き込み。"""
+        if not self._wheel_active:
+            return
+        self._wheel_active = False
+        self._wheel_joint_name = None
+        self._wheel_pair_name = None
+        self._wheel_group_preset_idx = -1
+        self._wheel_group_base_angles = {}
+        # ドラッグ終了と同じシグナルを流用。on_joint_drag_ended 側で
+        # push_undo / _save_to_node / Valkey 書き込み(Live ON時) が実行される。
+        self.joint_drag_ended.emit()
+
     def _get_pair_joint_name(self, joint_name):
         """l_xxx ↔ r_xxx のペア関節名を返す。対応なければ None。"""
         if joint_name.startswith("l_"):
@@ -4340,10 +4543,20 @@ class STLViewerWidget(QtWidgets.QWidget):
             return not mirror_needs_negate  # Opp = 同方向（ミラーの逆）
         return mirror_needs_negate  # Pair = ミラー
 
+    def _current_step_deg(self) -> float:
+        """3Dビュー drag/wheel で使う角度スナップ幅を返す。0 ならスナップなし。
+        JointEditor の Step 設定 (step_snapping_enabled / step_snapping_deg) を
+        単一の真実として参照する。3D 側 step_snap_check は表示上のミラー。"""
+        je = self.joint_editor
+        if je is None or not getattr(je, "step_snapping_enabled", False):
+            return 0.0
+        deg = float(getattr(je, "step_snapping_deg", 0.0))
+        return deg if deg > 0.0 else 0.0
+
     def _save_step_settings(self):
+        # Step 系は JointEditor 側 (_on_step_snapping_*) が
+        # joint_sliders_step_* を保存するため、ここでは扱わない。
         s = load_app_settings()
-        s["vtk_drag_step_enabled"] = self.step_snap_check.isChecked()
-        s["vtk_drag_step_deg"] = self.step_snap_spin.value()
         s["vtk_drag_pair_enabled"] = self.pair_check.isChecked()
         s["vtk_drag_opp_enabled"] = self.opp_check.isChecked()
         s["valkey_enabled"] = self.valkey_check.isChecked()
@@ -13618,6 +13831,68 @@ if __name__ == '__main__':
         # 起動時反映
         _on_valkey_toggled_for_live_sync(stl_viewer.valkey_check.isChecked())
 
+        # --- Step 設定の双方向同期 ---
+        # JointEditor 側 (step_snapping_checkbox / step_snapping_input) を単一の
+        # 真実とし、3D ビュー側 (stl_viewer.step_snap_check) は ON/OFF のミラー。
+        # deg 値は STLViewerWidget._current_step_deg() が JointEditor から直接
+        # 読み出すので同期不要。
+        _step_sync_guard = {"active": False}
+
+        def _sync_step_from_stl(checked):
+            if _step_sync_guard["active"]:
+                return
+            _step_sync_guard["active"] = True
+            joint_editor.step_snapping_checkbox.setChecked(bool(checked))
+            _step_sync_guard["active"] = False
+
+        def _sync_step_from_editor(checked):
+            if _step_sync_guard["active"]:
+                return
+            _step_sync_guard["active"] = True
+            stl_viewer.step_snap_check.setChecked(bool(checked))
+            _step_sync_guard["active"] = False
+
+        stl_viewer.step_snap_check.toggled.connect(_sync_step_from_stl)
+        joint_editor.step_snapping_checkbox.toggled.connect(_sync_step_from_editor)
+        # 起動時: JointEditor 側 (joint_sliders_step_snapping) を真実として揃える
+        _sync_step_from_editor(joint_editor.step_snapping_checkbox.isChecked())
+
+        # 3D ビュー「Step」チェックボックス右クリックで STEP 角度エディタを開く。
+        # JointEditor の step_snapping_input を介した保存/反映と同じ経路。
+        _step_value_dialog = {"ref": None}
+
+        def _open_step_value_dialog(local_pos):
+            existing = _step_value_dialog["ref"]
+            if existing is not None:
+                try:
+                    existing.close()
+                except Exception:
+                    pass
+            dlg = StepValueDialog(
+                float(joint_editor.step_snapping_deg),
+                parent=stl_viewer,
+            )
+
+            def _apply(v):
+                # JointEditor 側の spin に流すことで、_on_step_snapping_value_changed が
+                # 発火 → step_snapping_deg 更新と設定保存が行われる。
+                joint_editor.step_snapping_input.setValue(float(v))
+
+            dlg.value_changed.connect(_apply)
+            _step_value_dialog["ref"] = dlg
+            # チェックボックス上のクリック位置を画面座標に変換して表示
+            global_pos = stl_viewer.step_snap_check.mapToGlobal(local_pos)
+            dlg.adjustSize()
+            dlg.move(global_pos)
+            dlg.show()
+
+        stl_viewer.step_snap_check.setContextMenuPolicy(
+            QtCore.Qt.CustomContextMenu
+        )
+        stl_viewer.step_snap_check.customContextMenuRequested.connect(
+            _open_step_value_dialog
+        )
+
         right_layout.addWidget(playback_bar)
 
         # Initialize FPS from settings
@@ -14427,6 +14702,19 @@ if __name__ == '__main__':
             else:
                 dbg("[TRIGGER]", "robot_model is None, skip")
 
+        def on_wheel_angles_updated(fk_angles):
+            """3Dビューのマウスホイール中: ノッチ毎の途中反映。
+            drag と違いホイールは離散イベントなので、Undo/保存は停止検出後
+            (joint_drag_ended) に集約し、ここでは UI スライダー同期と Live 送信のみ行う。"""
+            if playback_ui_state.get("locked", False):
+                return
+            if not fk_angles:
+                return
+            # JointEditor スライダーを silent 反映（angles_changed は発火しない）
+            joint_editor.set_angles(joint_editor.fk_to_ui_angles(fk_angles))
+            # Live ON なら 30ms スロットルで Valkey へ書き込み
+            live_schedule_write(fk_angles)
+
         def on_stop():
             was_active = (
                 playback_ctrl.is_playing or
@@ -14656,6 +14944,7 @@ if __name__ == '__main__':
         buttons["Add Jump"].clicked.connect(on_add_jump)
         joint_editor.angles_changed.connect(on_joint_angles_changed)
         stl_viewer.joint_drag_ended.connect(on_joint_drag_ended)
+        stl_viewer.wheel_angles_updated.connect(on_wheel_angles_updated)
         stl_viewer.joint_angle_changed.connect(on_single_joint_changed)
         rewind_btn.clicked.connect(on_rewind)
         play_action_btn.clicked.connect(on_play_action_only)
