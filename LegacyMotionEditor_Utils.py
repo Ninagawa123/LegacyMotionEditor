@@ -1524,16 +1524,15 @@ class _WinSpinBoxStyler(QtCore.QObject):
     every other widget type keeps the native Windows look untouched.
     """
 
+    def __init__(self, parent=None):
+        super(_WinSpinBoxStyler, self).__init__(parent)
+        self._fusion_style = QtWidgets.QStyleFactory.create("Fusion")
+
     def eventFilter(self, obj, event):
         if (event.type() == QtCore.QEvent.Polish
-                and isinstance(obj, QtWidgets.QAbstractSpinBox)):
-            # A fresh, unparented QStyle per widget: QWidget.setStyle() makes
-            # the widget the style's owner, so sharing one QStyle instance
-            # across widgets causes a use-after-free once the first owning
-            # widget is destroyed (RuntimeError: already deleted).
-            style = QtWidgets.QStyleFactory.create("Fusion")
-            if style is not None:
-                obj.setStyle(style)
+                and isinstance(obj, QtWidgets.QAbstractSpinBox)
+                and self._fusion_style is not None):
+            obj.setStyle(self._fusion_style)
         return False
 
 
@@ -2864,6 +2863,36 @@ class AxisPad2D(QtWidgets.QWidget):
 # PadMonitorDialog - PS3-compatible gamepad input monitor
 # ==============================================================================
 
+
+class _RescanningComboBox(QtWidgets.QComboBox):
+    """showPopup() 直前に外部コールバックで再スキャン → 項目更新するコンボ。
+    再スキャン後もアイテムが「placeholder ひとつだけ」(UserRole が None) の
+    場合は、popup を出さずに reopen_callback を呼ぶ (ウィンドウ閉じ開きで
+    ネイティブレベルの再列挙をトリガーするため)。"""
+
+    def __init__(self, rescan_callback, reopen_callback=None, parent=None):
+        super().__init__(parent)
+        self._rescan_callback = rescan_callback
+        self._reopen_callback = reopen_callback
+
+    def showPopup(self):
+        try:
+            self._rescan_callback()
+        except Exception:
+            pass
+        # 再スキャン後も「No controller」placeholder しかなければ、popup は出さず
+        # 呼び出し元 (Pad ウィンドウ) を閉じて開き直す。
+        if (self._reopen_callback is not None
+                and self.count() == 1
+                and self.itemData(0, QtCore.Qt.UserRole) is None):
+            try:
+                self._reopen_callback()
+            except Exception:
+                pass
+            return
+        super().showPopup()
+
+
 class PadMonitorDialog(QtWidgets.QDialog):
     """PS3準拠のボタン入力値を確認するモニタ."""
 
@@ -3007,6 +3036,10 @@ class PadMonitorDialog(QtWidgets.QDialog):
         self._axis_pads = {}  # AxisPad2D widgets for L and R sticks
         self._axis_labels = {}  # Labels for Lx/Ly/Rx/Ry values
         self._updating_axes = False
+        # Controller プルダウンで指定された joystick インデックス。
+        # ユーザが Controller1..N から選ぶと _switch_to_controller で更新される。
+        self._preferred_joystick_index = 0
+        self._suppress_controller_combo = False  # populate 中の re-entrance ガード
         settings = load_app_settings()
         self.always_on_top = bool(settings.get("pad_monitor_always_on_top", True))
 
@@ -3123,6 +3156,65 @@ class PadMonitorDialog(QtWidgets.QDialog):
             self._button_widgets[name] = check
             self._button_positions[name] = (x, y)
             self._button_bits[name] = bit
+
+        # アクティブなリモコン (pygame joystick) を Controller1..N として選択するプルダウン。
+        # pad_area の絶対座標 (reference 系) で配置し _layout_pad_buttons でスケール。
+        # No controller placeholder のときにクリックすると _reopen_for_rescan が
+        # ウィンドウを閉じ開きして pygame の joystick サブシステムを再列挙する。
+        self._controller_combo = _RescanningComboBox(
+            self._populate_controller_combo,
+            reopen_callback=self._reopen_for_rescan,
+            parent=pad_area,
+        )
+        self._controller_combo.setObjectName("PadControllerCombo")
+        self._controller_combo.setToolTip("Active controller")
+        # macOS ネイティブメニューは QSS を無視するため、QListView に差し替えて
+        # Qt 描画の popup にする (テキストの見切れとテーマ崩れの両方を防ぐ)。
+        _combo_view = QtWidgets.QListView(self._controller_combo)
+        _combo_view.setUniformItemSizes(True)
+        # QListView 自身の白枠を消す (macOS で目立つ)
+        _combo_view.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self._controller_combo.setView(_combo_view)
+        # popup コンテナ (QComboBoxPrivateContainer) の白枠を消す:
+        # frame を消して背景を pad テーマに合わせる。setView 直後は view.parent()
+        # がその container を返す。
+        _popup_container = _combo_view.parent()
+        if isinstance(_popup_container, QtWidgets.QFrame):
+            _popup_container.setFrameShape(QtWidgets.QFrame.NoFrame)
+            _popup_container.setStyleSheet(
+                f"background-color: {self.COLOR_PAD};"
+                f" border: 1px solid {self.COLOR_PAD_BORDER};"
+            )
+        # popup の最小幅を確保 (Controller10+ でも切れないように)
+        self._controller_combo.view().setMinimumWidth(140)
+        self._controller_combo.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon
+        )
+        self._controller_combo.setStyleSheet(
+            f"QComboBox {{ color: {self.COLOR_TEXT}; background-color: {self.COLOR_BTN};"
+            f" border: 1px solid {self.COLOR_PAD_BORDER}; border-radius: 4px;"
+            f" padding: 2px 14px 2px 6px; font-size: 11px; }}"
+            f"QComboBox:hover {{ border-color: {self.COLOR_ACCENT}; }}"
+            # drop-down: 区切り線を出さず、幅も最小限にしてテキスト領域を広く取る
+            f"QComboBox::drop-down {{ subcontrol-origin: padding;"
+            f" subcontrol-position: top right; width: 14px;"
+            f" border: none; background: transparent; }}"
+            f"QComboBox QAbstractItemView {{ color: {self.COLOR_TEXT};"
+            f" background-color: {self.COLOR_PAD};"
+            f" border: 1px solid {self.COLOR_PAD_BORDER};"
+            f" selection-background-color: {self.COLOR_ACCENT};"
+            f" selection-color: {self.COLOR_TEXT};"
+            f" padding: 2px; outline: 0; }}"
+            f"QComboBox QAbstractItemView::item {{ min-height: 20px; padding: 2px 6px; }}"
+        )
+        # activated: ユーザが明示的に項目を選んだときのみ発火 (同一項目の再選択でも発火する)。
+        # currentIndexChanged だと同じ Controller を再度クリックしても走らないため、
+        # 「Via PC OFF のとき Controller1 を再選択して有効化」の要件を満たせない。
+        # 反対に activated は _populate_controller_combo 内の setCurrentIndex では発火しない
+        # ので、_suppress_controller_combo ガードなしでも安全。
+        self._controller_combo.activated.connect(
+            self._on_controller_combo_changed
+        )
         QtCore.QTimer.singleShot(0, self._layout_pad_buttons)
 
         # Sticks + play/stop. Axis numbers sit outside each stick.
@@ -3153,9 +3245,11 @@ class PadMonitorDialog(QtWidgets.QDialog):
         playback_wrap = QtWidgets.QWidget()
         playback_wrap.setFixedSize(_play_w, _play_col_h)
         self._play_btn = QtWidgets.QToolButton(playback_wrap)
-        self._play_btn.setText("▶")
+        # 3Dビュー下の ▶︎_ (play_full_btn) と同じラベル/機能 (Boot から再生)。
+        # 接続は main() の _wire_pad_playback_buttons 経由で on_play_full に張られる。
+        self._play_btn.setText("▶︎_")
         self._play_btn.setObjectName("PadIconAction")
-        self._play_btn.setToolTip("Play (full / cross-action)")
+        self._play_btn.setToolTip("Play from Boot Action (same as 3D view ▶︎_)")
         self._play_btn.setAutoRaise(False)
         self._play_btn.setFocusPolicy(QtCore.Qt.NoFocus)
         self._play_btn.setGeometry(0, 0, _play_w, _play_h)
@@ -3286,6 +3380,265 @@ class PadMonitorDialog(QtWidgets.QDialog):
         self.value_decimal_label.setGeometry(value_x, y_num, value_w, 20)
         self.value_binary_label.setGeometry(value_x, y_num + 23, value_w, 16)
 
+        # Controller プルダウン: face ボタン下・スティック直前の中央帯 (reference 座標)
+        # DPad Down 右端 (104) と Cross 左端 (290) の間に「Controller1 ▼」がちょうど収まる幅で中央配置
+        combo = getattr(self, "_controller_combo", None)
+        if combo is not None:
+            combo_ref_w, combo_ref_h = 116, 20
+            combo_ref_x = int(round((ref_w - combo_ref_w) / 2.0))
+            combo_ref_y = 120
+            combo.setGeometry(
+                int(round(offset_x + combo_ref_x * scale)),
+                int(round(offset_y + combo_ref_y * scale)),
+                max(96, int(round(combo_ref_w * scale))),
+                max(16, int(round(combo_ref_h * scale))),
+            )
+
+    def _scan_controllers_pygame(self):
+        """pygame が現在検出しているジョイスティックを [(idx, name), ...] で返す。
+        pygame 未初期化なら空リスト。現在使用中の index は既存ハンドルの名前を
+        再利用し、他所で握られているハンドルを壊さない。"""
+        try:
+            if not self._ensure_pygame():
+                return []
+        except Exception:
+            return []
+        pg = self._pygame
+        result = []
+
+        # 現在アクティブな index と保持済み名前を先に控えておく
+        active_indices = {}  # idx -> name
+        if self._raw_joystick is not None:
+            try:
+                active_indices[int(self._raw_joystick.get_id())] = (
+                    self._raw_joystick.get_name() or ""
+                )
+            except Exception:
+                pass
+        if self._sdl_controller is not None:
+            try:
+                joy_wrap = self._sdl_controller.as_joystick()
+                active_indices.setdefault(
+                    int(joy_wrap.get_id()), joy_wrap.get_name() or ""
+                )
+            except Exception:
+                pass
+
+        try:
+            n = pg.joystick.get_count()
+            # Windows 対策: 1 台の物理パッドが XInput / DirectInput / HIDAPI で
+            # 重複列挙されるケースを dedupe。GUID が返らないドライバがあるので
+            # GUID → name → 順序 の順に fallback。GUID が空文字列だと安全側に
+            # 倒して残す (別デバイスの可能性)。
+            seen_guids = set()
+            seen_names = set()
+            for i in range(n):
+                if i in active_indices:
+                    name = active_indices[i] or f"Joystick {i}"
+                    result.append((i, name))
+                    seen_names.add(name.lower())
+                    continue
+                name = ""
+                guid = ""
+                # SDL Controller の方が正規化名を返しやすいので先に試す
+                if self._sdl_mod is not None:
+                    try:
+                        if self._sdl_mod.is_controller(i):
+                            c = self._sdl_mod.Controller(i)
+                            try:
+                                jw = c.as_joystick()
+                                name = jw.get_name() or ""
+                                try:
+                                    guid = jw.get_guid() or ""
+                                except Exception:
+                                    guid = ""
+                            finally:
+                                try:
+                                    c.quit()
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+                if not name:
+                    try:
+                        joy = pg.joystick.Joystick(i)
+                        joy.init()
+                        try:
+                            name = joy.get_name() or ""
+                            try:
+                                guid = joy.get_guid() or ""
+                            except Exception:
+                                guid = ""
+                        finally:
+                            try:
+                                joy.quit()
+                            except Exception:
+                                pass
+                    except Exception:
+                        name = ""
+                # 同じ GUID (0 以外) or 同じ name が既に result に居るなら Windows の
+                # 重複列挙とみなしスキップ
+                if guid and guid not in ("00000000000000000000000000000000",):
+                    if guid in seen_guids:
+                        continue
+                    seen_guids.add(guid)
+                nm_key = (name or "").lower()
+                if nm_key and nm_key in seen_names:
+                    continue
+                if nm_key:
+                    seen_names.add(nm_key)
+                result.append((i, name or f"Joystick {i}"))
+        except Exception:
+            return result
+        return result
+
+    def _populate_controller_combo(self):
+        """プルダウンを最新のジョイスティック一覧で更新する。表示は
+        Controller1..N、tooltip に実名。現在使用中の index を選択状態にする。"""
+        combo = getattr(self, "_controller_combo", None)
+        if combo is None:
+            return
+        entries = self._scan_controllers_pygame()
+        self._suppress_controller_combo = True
+        try:
+            combo.blockSignals(True)
+            combo.clear()
+            if not entries:
+                # placeholder を enabled のまま置いておく。ユーザがクリックすると
+                # showPopup → _reopen_for_rescan (ウィンドウ閉じ開き + pygame 再列挙)
+                combo.addItem("No controller")
+                combo.setEnabled(True)
+                combo.setToolTip("Click to rescan (window will briefly reopen)")
+            else:
+                combo.setEnabled(True)
+                names = []
+                for order, (idx, name) in enumerate(entries):
+                    combo.addItem(f"Controller{order + 1}")
+                    combo.setItemData(order, idx, QtCore.Qt.UserRole)
+                    combo.setItemData(order, name or f"Joystick {idx}", QtCore.Qt.ToolTipRole)
+                    names.append(f"Controller{order + 1}: {name}")
+                combo.setToolTip("\n".join(names))
+                # 現在使用中の index を選択
+                cur_idx = self._preferred_joystick_index
+                sel_order = 0
+                for order, (idx, _n) in enumerate(entries):
+                    if idx == cur_idx:
+                        sel_order = order
+                        break
+                combo.setCurrentIndex(sel_order)
+            combo.blockSignals(False)
+        finally:
+            self._suppress_controller_combo = False
+
+    def _reopen_for_rescan(self):
+        """No controller placeholder クリック時: Pad ウィンドウを一度閉じて開き直し、
+        pygame の joystick サブシステムを quit()+init() で再列挙する。
+        ネイティブ/SDL レベルで hot-plug 検出が更新されるため、その後の
+        _populate_controller_combo で新しく繋がったリモコンが見える。"""
+        # Windows 対策: hide() する前にコンボの popup を明示的に閉じる。
+        # Qt バージョンによってはウィンドウ側 hide のみだと popup が残像化する。
+        combo = getattr(self, "_controller_combo", None)
+        if combo is not None:
+            try:
+                combo.hidePopup()
+            except Exception:
+                pass
+        # Windows 対策: quit()/init() の前に必ず handle を閉じる。
+        # 通常 No controller 状態では handle は無いが、race で残っていると
+        # SDL 内部で dangling reference になり quit で crash する OS がある。
+        try:
+            self._close_pad_device_handles()
+        except Exception:
+            pass
+        self.hide()
+
+        def _do_reopen():
+            # pygame joystick の強制再列挙。Windows/macOS 両対応。
+            # quit → init を独立 try で囲み、どちらか失敗しても片方は試す。
+            if self._pygame is not None:
+                try:
+                    self._pygame.joystick.quit()
+                except Exception:
+                    pass
+                try:
+                    self._pygame.joystick.init()
+                except Exception:
+                    pass
+                try:
+                    if self._sdl_mod is not None and not self._sdl_mod.get_init():
+                        self._sdl_mod.init()
+                except Exception:
+                    pass
+            # macOS: hidden display hack で HID 検出を蹴る
+            # (Windows では該当なし)
+            try:
+                if sys.platform == "darwin":
+                    self._try_darwin_hidden_display_for_joysticks()
+            except Exception:
+                pass
+            self.show()
+            self.raise_()
+
+        # 100ms 遅延させて OS レベルの close 処理と popup 消滅を挟む
+        QtCore.QTimer.singleShot(100, _do_reopen)
+
+    def _on_controller_combo_changed(self, order):
+        """ユーザがプルダウンを操作したとき: 選んだ order → joystick index に変換して切替。
+        「リモコンを選ぶ」= 使う意思とみなし、Use Pad via PC が OFF なら自動で ON にする。"""
+        if self._suppress_controller_combo:
+            return
+        combo = getattr(self, "_controller_combo", None)
+        if combo is None or order < 0:
+            return
+        idx = combo.itemData(order, QtCore.Qt.UserRole)
+        if idx is None:
+            return
+        # Use Pad via PC OFF なら先に ON にして polling/handles を有効化。
+        # (setChecked → _on_use_pc_pad_toggled → _open_pad_device が macOS で
+        # Apple GC を掴む可能性があるが、直後の _switch_to_controller が閉じて
+        # 目的の pygame index を強制的に開き直す。)
+        if not self.use_pc_pad_checkbox.isChecked():
+            self.use_pc_pad_checkbox.setChecked(True)
+        self._switch_to_controller(int(idx))
+
+    def _switch_to_controller(self, idx: int):
+        """既存ハンドルを閉じて、指定 index の pygame joystick を開き直す。
+        macOS Apple GameController パスは明示切替で意味を成さないため使わない。"""
+        self._close_pad_device_handles()
+        self._preferred_joystick_index = idx
+
+        if not self._ensure_pygame():
+            self._refresh_pad_status_short()
+            return
+        pg = self._pygame
+        try:
+            n = pg.joystick.get_count()
+            if not (0 <= idx < n):
+                self._refresh_pad_status_short()
+                return
+            # SDL Controller が使えるなら優先 (軸マッピングが正規化されている)
+            if self._sdl_mod is not None:
+                try:
+                    if self._sdl_mod.is_controller(idx):
+                        self._sdl_controller = self._sdl_mod.Controller(idx)
+                        self.use_pc_pad_checkbox.setToolTip(
+                            self._sdl_controller.as_joystick().get_name() or ""
+                        )
+                        self._hotplug_ticks = 0
+                        self._refresh_pad_status_short()
+                        return
+                except Exception:
+                    self._sdl_controller = None
+            joy = pg.joystick.Joystick(idx)
+            joy.init()
+            self._raw_joystick = joy
+            self._pad_layout = self._detect_pad_layout(joy)
+            self.use_pc_pad_checkbox.setToolTip(joy.get_name() or "")
+            self._hotplug_ticks = 0
+        except Exception as e:
+            self._pygame_error = str(e)
+        self._refresh_pad_status_short()
+
     def resizeEvent(self, event):
         super(PadMonitorDialog, self).resizeEvent(event)
         self._layout_pad_buttons()
@@ -3338,6 +3691,9 @@ class PadMonitorDialog(QtWidgets.QDialog):
             if self.width() < need_w or self.height() < need_h:
                 self.resize(max(self.width(), need_w), max(self.height(), need_h))
         self._refresh_open_mujoco_btn()
+        # 開いた瞬間にアクティブなリモコンを検索してプルダウンを反映。
+        # (プルダウンを開いた瞬間の再スキャンは _RescanningComboBox.showPopup で対応)
+        self._populate_controller_combo()
 
     def _on_always_on_top_toggled(self, checked):
         self.always_on_top = bool(checked)
@@ -4106,26 +4462,81 @@ class PadMonitorDialog(QtWidgets.QDialog):
             return
 
         try:
-            self._pygame.event.pump()
+            # Windows 対策: pump() 自体が例外を投げる稀ケース (SDL 内部エラー)
+            # を分離キャッチ。失敗した場合は handle を疑って閉じる。
+            try:
+                self._pygame.event.pump()
+            except Exception:
+                self._close_pad_device_handles()
+                self._clear_inputs()
+                self._refresh_pad_status_short()
+                return
+
+            # 物理切断ガード: pump() で SDL_JOYDEVICEREMOVED が処理された後、
+            # get_count() が 0 (もしくは我々の id 以下) なら基底オブジェクトが
+            # 破棄されている可能性が高く、joy.get_button() などが C レベルで
+            # segfault する。read する前にここで検出して安全に閉じる。
+            # (joy.get_init() は quit() を呼ばない限り True のままなので判定に使えない)
+            pg = self._pygame
+            try:
+                _count = pg.joystick.get_count()
+            except Exception:
+                _count = 0
+            _joy_id = None
+            _id_lookup_failed = False
+            if self._raw_joystick is not None:
+                try:
+                    _joy_id = int(self._raw_joystick.get_id())
+                except Exception:
+                    _id_lookup_failed = True
+            if self._sdl_controller is not None and _joy_id is None and not _id_lookup_failed:
+                try:
+                    _joy_id = int(self._sdl_controller.as_joystick().get_id())
+                except Exception:
+                    _id_lookup_failed = True
+            # Windows 対策: get_id() 例外は「ハンドルが既に無効」の強い兆候。
+            # 一部ドライバでは id が返らないので、この時点で切断扱いにする。
+            _lost = (
+                _count <= 0
+                or _id_lookup_failed
+                or (_joy_id is not None and _joy_id >= _count)
+            )
+            if _lost:
+                # 物理切断とみなして handle を安全に閉じ、入力をクリア。
+                # 再接続はチェックボックスの再チェック or プルダウン再選択に委ねる。
+                self._close_pad_device_handles()
+                self._clear_inputs()
+                self._refresh_pad_status_short()
+                return
+
             if self._sdl_controller is not None:
+                # attached() でも切断検出。ここでは reopen せず handle を閉じるだけ
+                # (以前は _open_pad_device を呼んでいたが、切断直後に呼ぶと
+                # 上流の hotplug 処理と競合して segfault の温床になる)
                 if hasattr(self._sdl_controller, "attached") and not self._sdl_controller.attached():
-                    self._open_pad_device()
-                    if self._sdl_controller is None and self._raw_joystick is None:
-                        self._clear_inputs()
-                        return
+                    self._close_pad_device_handles()
+                    self._clear_inputs()
+                    self._refresh_pad_status_short()
+                    return
                 self._update_from_sdl_controller()
             else:
                 if self._raw_joystick is not None and not self._raw_joystick.get_init():
-                    self._open_pad_device()
-                    if self._raw_joystick is None:
-                        self._clear_inputs()
-                        return
+                    self._close_pad_device_handles()
+                    self._clear_inputs()
+                    self._refresh_pad_status_short()
+                    return
                 self._update_axes_from_joystick()
                 self._update_buttons_from_joystick()
             # Always update PAD_REGISTER_VALUES even when window is hidden
             self._update_pad_registers()
         except Exception as e:
+            # Python-level 例外のみキャッチ。念のため handle も閉じておく
             self.use_pc_pad_checkbox.setToolTip(str(e))
+            try:
+                self._close_pad_device_handles()
+                self._clear_inputs()
+            except Exception:
+                pass
         self._refresh_pad_status_short()
 
     def _update_from_sdl_controller(self):
