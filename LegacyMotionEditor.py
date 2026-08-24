@@ -74,6 +74,7 @@ from LegacyMotionEditor_Utils import (
     VALKEY_DEFAULT_HOST, VALKEY_DEFAULT_PORT,
     VALKEY_DEFAULT_WRITE_KEY, VALKEY_DEFAULT_READ_KEY,
     ensure_valkey_container_running,
+    ensure_valkey_running,
     # Color constants
     MINT_GREEN_COLOR, BRANCH_POINT_COLOR, BRANCH_LINE_COLOR,
     PALETTE_WINDOW, PALETTE_WINDOW_TEXT, PALETTE_BASE, PALETTE_ALTERNATE_BASE,
@@ -10841,18 +10842,21 @@ class LMEValkeyClient:
             self._maybe_autostart_docker()
 
     def _maybe_autostart_docker(self) -> None:
-        """Windows only: best-effort bring up Docker Desktop / the
-        physicalon-valkey container in the background, then retry connecting.
-        No-op on macOS/Ubuntu, where Valkey is expected to already be running.
+        """Best-effort bring up Valkey in the background, then retry connecting.
+
+        - Windows: launches Docker Desktop and starts the physicalon-valkey
+          container.
+        - macOS / Linux: spawns a native valkey-server (or redis-server)
+          detached via subprocess so it outlives LME.
         """
-        if os.name != "nt" or self._autostart_running:
+        if self._autostart_running:
             return
         self._autostart_running = True
         host, port = self._host, self._port
 
         def _run():
             try:
-                if ensure_valkey_container_running(host, port):
+                if ensure_valkey_running(host, port):
                     # Only reconnect if config hasn't changed/disabled meanwhile.
                     if self._enabled and self._host == host and self._port == port:
                         self._reconnect()

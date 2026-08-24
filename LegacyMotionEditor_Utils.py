@@ -640,6 +640,113 @@ def ensure_valkey_container_running(host: str, port: int) -> bool:
         time.sleep(1.0)
     return valkey_available(host, port)
 
+
+# =============================================================================
+# Native valkey-server auto-start (macOS / Linux)
+# =============================================================================
+# Common install locations shutil.which may miss when LME is launched from a
+# GUI (Finder double-click doesn't inherit Homebrew's PATH additions).
+_VALKEY_NATIVE_CANDIDATES = (
+    "/opt/homebrew/bin/valkey-server",  # Homebrew on Apple Silicon
+    "/opt/homebrew/bin/redis-server",
+    "/usr/local/bin/valkey-server",     # Homebrew on Intel Mac
+    "/usr/local/bin/redis-server",
+    "/usr/bin/valkey-server",           # Linux system install
+    "/usr/bin/redis-server",
+)
+
+NATIVE_AUTOSTART_TIMEOUT_S = 8.0
+
+# Hold a reference so the spawned child isn't GC'd mid-startup (harmless with
+# start_new_session=True; primarily useful for debugging / status inspection).
+_native_valkey_proc: "subprocess.Popen | None" = None
+
+
+def _resolve_native_valkey_cmd() -> "str | None":
+    """Return path to valkey-server or redis-server, or None if not found."""
+    for name in ("valkey-server", "redis-server"):
+        p = shutil.which(name)
+        if p:
+            return p
+    for p in _VALKEY_NATIVE_CANDIDATES:
+        if os.path.isfile(p) and os.access(p, os.X_OK):
+            return p
+    return None
+
+
+def _start_valkey_server_native(host: str, port: int) -> bool:
+    """Spawn valkey-server / redis-server detached and wait for PING (POSIX).
+
+    Uses start_new_session=True so the child survives after LME exits — same
+    detachment pattern as Meridian_console's `valkey_start`. Returns True once
+    PING responds, False otherwise.
+    """
+    global _native_valkey_proc
+
+    if valkey_available(host, port):
+        return True
+
+    cmd = _resolve_native_valkey_cmd()
+    if not cmd:
+        _log.warning(
+            "valkey-server / redis-server not found on PATH nor common install "
+            "locations; auto-start skipped. Install via 'brew install valkey' "
+            "or start the server manually.")
+        return False
+
+    args = [cmd, "--port", str(int(port))]
+    # Bind loopback only when host is localhost; --save "" disables RDB snapshots.
+    if str(host) in ("127.0.0.1", "localhost", "::1"):
+        args += ["--bind", "127.0.0.1"]
+    args += ["--save", ""]
+
+    try:
+        _native_valkey_proc = subprocess.Popen(
+            args,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        _log.info("Started %s (PID %d) on %s:%d",
+                  os.path.basename(cmd), _native_valkey_proc.pid, host, port)
+    except FileNotFoundError:
+        _log.warning("valkey-server executable disappeared: %s", cmd)
+        return False
+    except Exception as e:
+        _log.warning("Failed to spawn %s: %s", cmd, e)
+        return False
+
+    deadline = time.monotonic() + NATIVE_AUTOSTART_TIMEOUT_S
+    while time.monotonic() < deadline:
+        if _native_valkey_proc.poll() is not None:
+            _log.warning("valkey-server exited early (rc=%s)",
+                          _native_valkey_proc.returncode)
+            return False
+        if valkey_available(host, port):
+            return True
+        time.sleep(0.2)
+    _log.warning("valkey-server did not respond within %.1fs",
+                  NATIVE_AUTOSTART_TIMEOUT_S)
+    return False
+
+
+def ensure_valkey_running(host: str, port: int) -> bool:
+    """Best-effort ensure a Valkey-compatible server is reachable at host:port.
+
+    Cross-platform dispatcher:
+      - Already reachable → True immediately.
+      - Windows           → ensure_valkey_container_running (Docker Desktop +
+                            physicalon-valkey container).
+      - macOS / Linux     → _start_valkey_server_native (subprocess.Popen a
+                            native valkey-server / redis-server, detached).
+
+    Meant to run off the main thread (may block up to a few seconds).
+    """
+    if valkey_available(host, port):
+        return True
+    if os.name == "nt":
+        return ensure_valkey_container_running(host, port)
+    return _start_valkey_server_native(host, port)
+
 # LME URDF joint name → (meridim_index, multiplier)
 # Keys are URDF joint names used by LegacyMotionEditor (roid1.urdf).
 # multiplier matches PhysicalOn joint_to_meridis: +1.0 = symmetric, -1.0 = axis-inverted R joints.
