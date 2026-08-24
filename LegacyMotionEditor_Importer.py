@@ -9946,14 +9946,36 @@ class URDFRobotModel:
         self.link_actors.clear()
         self.link_transforms.clear()
 
-    def apply_joint_angles(self, angles_deg):
+    def apply_joint_angles(self, angles_deg, snap: bool = False):
         """FK計算してVTKアクターのトランスフォームを更新。
         passive_joints がある場合、angles_deg 中の active 分から passive を
         MuJoCo で解いてマージするので、呼び出し側は active だけ渡してもよい
         (呼び出し側が明示的に passive を含めても、こちらで再計算した値で上書きする)。
+
+        Args:
+            angles_deg: {joint_name: degrees} の dict。
+            snap: True の場合、passive IK の warm-start (前回解) を破棄して
+                mj_resetData で qpos=0 から解き直す。ノード選択などで「別ポーズへ
+                瞬間移動」する際、閉ループ IK が逆ブランチに落ちて破綻するのを
+                防ぐ。連続的なスライダー操作や再生補間では snap=False (デフォルト)
+                で warm-start を活かして滑らかに追従する。
         """
         if not self.root_link:
             return
+
+        # ---- Snap: 前回解 (warm-start) と current_angles を破棄 ----
+        if snap:
+            try:
+                self._last_passive_qpos_rad.clear()
+            except Exception:
+                pass
+            self.current_angles = {}
+            if self.mj_model is not None and self.mj_data is not None:
+                try:
+                    import mujoco  # type: ignore
+                    mujoco.mj_resetData(self.mj_model, self.mj_data)
+                except Exception:
+                    pass
 
         # ---- 閉ループ passive の自動計算 (active → passive) ----
         if self.passive_joints and self.mj_model is not None:
@@ -9963,13 +9985,21 @@ class URDFRobotModel:
                 active_portion = {jn: v for jn, v in angles_deg.items()
                                   if jn in self.actuator_joints}
                 if active_portion:
-                    passive_deg = self.solve_passive_angles(active_portion)
+                    if snap:
+                        # Homotopy: canonical zero (mj_resetData 直後) から
+                        # 12 段階で target へランプ。各段階の解が次段階の
+                        # warm-start になり primary branch を追跡する。
+                        passive_deg = self.solve_passive_angles_ramp(
+                            active_portion, steps=12)
+                    else:
+                        # 連続動作 (スライダー・再生など): 前回解を活用した
+                        # 1 発解で十分。
+                        passive_deg = self.solve_passive_angles(active_portion)
                     if passive_deg:
                         merged = dict(angles_deg)
                         merged.update(passive_deg)
                         angles_deg = merged
             except Exception:
-                # ソルバ失敗時は元の angles_deg のまま処理を続ける (壊さない)
                 pass
 
         # 現在の角度を保存
@@ -10041,6 +10071,32 @@ class URDFRobotModel:
         return dict(self.current_angles)
 
     # ---------- 閉ループ passive joint 解決 ---------------------------------
+    def solve_passive_angles_ramp(self, active_target_deg: dict,
+                                  steps: int = 12) -> dict:
+        """Homotopy 解: active を 0 から target まで steps 段階でランプしつつ
+        毎段階 solve_passive_angles を呼ぶ。各段階の解が次段階の warm-start に
+        なるので、Newton IK が primary branch から外れて逆側に落ちるのを防げる。
+        「Pose ノード選択で瞬間移動する」ような大変位ジャンプで使う。
+
+        呼び出し前提: 呼び出し側で _last_passive_qpos_rad をクリア済み
+        (=canonical zero 起点で連続変形を追跡)。
+
+        Returns: 最終ステップ (t=1.0) の passive 角度 [deg]。
+        """
+        if not self.passive_joints or self.mj_model is None:
+            return {}
+        result = {}
+        try:
+            for i in range(1, max(1, int(steps)) + 1):
+                t = i / float(steps)
+                partial = {jn: (v * t) for jn, v in active_target_deg.items()}
+                result = self.solve_passive_angles(partial)
+        except Exception as _e:
+            if self._mj_solver_ok:
+                print(f"[MJCFRobotModel] solve_passive_angles_ramp failed: {_e}")
+                self._mj_solver_ok = False
+        return result
+
     def solve_passive_angles(self, active_angles_deg: dict) -> dict:
         """active joint 角度 (deg) から passive joint 角度 (deg) を計算する。
 

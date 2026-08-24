@@ -12669,8 +12669,11 @@ def load_motion_data(data, graph, stl_viewer, joint_editor, playback_ctrl,
             if robot_model and isinstance(sn, PoseNode):
                 joint_editor.set_current_pose_node(sn)
                 joint_editor.set_angles(sn.angles_deg)
+                # モーション JSON ロード直後の初期ポーズも「瞬間移動」なので
+                # 閉ループ IK は warm-start を捨てて canonical zero から解く。
                 robot_model.apply_joint_angles(
-                    joint_editor.get_angles_for_3d(sn.angles_deg))
+                    joint_editor.get_angles_for_3d(sn.angles_deg),
+                    snap=True)
                 stl_viewer.safe_render()
 
         print(f"[MotionJSON] Loaded {len(node_map)} nodes, {len(data.get('edges', []))} edges")
@@ -14246,7 +14249,12 @@ if __name__ == '__main__':
                     joint_editor.set_angles(node.angles_deg)
                     rm = motion_state['robot_model']
                     if rm:
-                        rm.apply_joint_angles(joint_editor.get_angles_for_3d(node.angles_deg))
+                        # snap=True: 前ポーズからの瞬間移動なので閉ループ IK の
+                        # warm-start (前回解) を破棄し、canonical zero から
+                        # 解き直す (逆ブランチ跳躍による破綻を防ぐ)
+                        rm.apply_joint_angles(
+                            joint_editor.get_angles_for_3d(node.angles_deg),
+                            snap=True)
                         stl_viewer.safe_render()
                     return
             dbg("[NODE]", "No PoseNode selected, setting current_pose_node to None")
