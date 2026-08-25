@@ -641,6 +641,38 @@ class CustomNodeItem(NodeItem):
                 _align = QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop
             painter.drawText(body_rect, _align, body)
             painter.setFont(text_item.font())
+
+        # 左バッジ描画（Pose: frame数、Branching: PADボタン/アナログ軸）
+        # ノードが _compute_left_badge callable を提供している場合のみ描画する
+        badge_fn = getattr(self, "_compute_left_badge", None)
+        badge_text = None
+        if callable(badge_fn):
+            try:
+                raw = badge_fn()
+                if raw is not None:
+                    badge_text = str(raw).strip() or None
+            except Exception:
+                badge_text = None
+        if badge_text and not getattr(self, "_title_editing", False):
+            badge_font = QtGui.QFont(text_item.font())
+            ps = badge_font.pointSize()
+            if ps > 0:
+                badge_font.setPointSize(max(7, ps - 1))
+            else:
+                px = badge_font.pixelSize()
+                badge_font.setPixelSize(max(9, px - 1))
+            painter.setFont(badge_font)
+            painter.setPen(text_color)
+            badge_margin = 4.0
+            body_center_y = (text_draw_rect.bottom() + node_rect.bottom()) / 2.0
+            badge_rect = QtCore.QRectF(
+                node_rect.x() + badge_margin,
+                body_center_y - 8.0,
+                max(20.0, node_rect.width() / 2.0 - badge_margin),
+                16.0,
+            )
+            painter.drawText(badge_rect, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, badge_text)
+            painter.setFont(text_item.font())
         self._restore_node_cache_mode()
 
     def _restore_node_cache_mode(self):
@@ -1548,6 +1580,10 @@ class CustomViewer(NodeViewer):
                         new_node.branch_if_pad_analog_axis = getattr(node, 'branch_if_pad_analog_axis', "Lx")
                         new_node.branch_if_pad_analog_op = getattr(node, 'branch_if_pad_analog_op', ">=")
                         new_node.branch_if_pad_analog_threshold = getattr(node, 'branch_if_pad_analog_threshold', 0)
+                        # ロード時と同じく、出力ポート追加前に高さをロックしないと
+                        # add_output のたびに _set_base_size で高さが拡大する。
+                        if new_node.branching_enabled:
+                            new_node._lock_output_row_height()
                         while new_node.output_count < len(node.out_port_labels):
                             label_idx = new_node.output_count
                             new_node._add_pose_output(
@@ -1623,6 +1659,9 @@ class CustomViewer(NodeViewer):
                         new_node.branch_if_pad_analog_axis = getattr(node, "branch_if_pad_analog_axis", "Lx")
                         new_node.branch_if_pad_analog_op = getattr(node, "branch_if_pad_analog_op", ">=")
                         new_node.branch_if_pad_analog_threshold = getattr(node, "branch_if_pad_analog_threshold", 0)
+                        # 出力ポート追加前に高さをロック（拡大防止）。ロード時と同じ手順。
+                        if new_node.branching_enabled:
+                            new_node._lock_output_row_height()
                         while new_node.output_count < len(node.out_port_labels):
                             label_idx = new_node.output_count
                             new_node._add_branch_output(
@@ -1899,6 +1938,9 @@ class CustomViewer(NodeViewer):
                         new_node.branch_if_pad_analog_threshold = int(data.get('branch_if_pad_analog_threshold', 0))
                         out_labels = data.get('out_port_labels', ['default'])
                         out_priorities = data.get('out_port_priorities', [0])
+                        # 出力ポート追加前に高さをロック（拡大防止）。
+                        if new_node.branching_enabled:
+                            new_node._lock_output_row_height()
                         while new_node.output_count < len(out_labels):
                             li = new_node.output_count
                             new_node._add_pose_output(
@@ -1947,6 +1989,9 @@ class CustomViewer(NodeViewer):
                         new_node.branch_if_pad_analog_threshold = int(data.get('branch_if_pad_analog_threshold', 0))
                         out_labels = data.get('out_port_labels', ['default'])
                         out_priorities = data.get('out_port_priorities', [0])
+                        # 出力ポート追加前に高さをロック（拡大防止）。
+                        if new_node.branching_enabled:
+                            new_node._lock_output_row_height()
                         while new_node.output_count < len(out_labels):
                             li = new_node.output_count
                             new_node._add_branch_output(
@@ -6332,7 +6377,47 @@ class CustomNodeGraph(NodeGraph):
 
     def remove_node(self, node):
         self.stl_viewer.remove_stl_for_node(node)
+        # NodeGraphQt の Port.connected_ports() は接続相手のポート名が dict に
+        # 見つからないと KeyError で例外を投げ、削除が中断してしまう。
+        # 空名 (add_output('')) ポートや古いプロジェクトの整合性ずれで発生する。
+        # ここで壊れた接続エントリを事前に除去してから super に委譲する。
+        try:
+            self._sanitize_node_connections(node)
+        except Exception:
+            pass
         super(CustomNodeGraph, self).remove_node(node)
+
+    def _sanitize_node_connections(self, node):
+        """削除対象ノードの接続情報から、相手側に存在しないポート名を除去する。"""
+        try:
+            all_ports = list(node.input_ports()) + list(node.output_ports())
+        except Exception:
+            return
+        for p in all_ports:
+            try:
+                is_in = p.type_() == "in"
+            except Exception:
+                is_in = None
+            try:
+                conn_map = p.model.connected_ports
+            except Exception:
+                continue
+            for other_id in list(conn_map.keys()):
+                other = self.get_node_by_id(other_id)
+                if other is None:
+                    del conn_map[other_id]
+                    continue
+                try:
+                    valid_names = set((other.outputs() if is_in else other.inputs()).keys())
+                except Exception:
+                    valid_names = None
+                if valid_names is None:
+                    continue
+                kept = [n for n in conn_map[other_id] if n in valid_names]
+                if not kept:
+                    del conn_map[other_id]
+                else:
+                    conn_map[other_id] = kept
 
     def snap_to_grid(self, value):
         """値をグリッドにスナップ"""
@@ -7067,6 +7152,12 @@ class PoseNode(BaseNode):
         self._original_double_click = self.view.mouseDoubleClickEvent
         self.view.mouseDoubleClickEvent = self._on_double_click
 
+        # 左バッジ: フレーム数を [N]f 形式で表示
+        try:
+            self.view._compute_left_badge = lambda n=self: f"{int(getattr(n, 'frames', 0))}f"
+        except Exception:
+            pass
+
         # ポーズノード用の色を適用（ビュー初期化後に実行）
         QtCore.QTimer.singleShot(20, self._apply_node_colors)
 
@@ -7510,7 +7601,25 @@ class BranchingNode(BaseNode):
         self._original_double_click = self.view.mouseDoubleClickEvent
         self.view.mouseDoubleClickEvent = self._on_double_click
 
+        # 左バッジ: IF-PAD 有効ならボタン名、IF-Analog 有効なら軸名
+        try:
+            self.view._compute_left_badge = self._compute_left_badge_text
+        except Exception:
+            pass
+
         QtCore.QTimer.singleShot(20, self._apply_branching_node_colors)
+
+    def _compute_left_badge_text(self):
+        """左バッジ用文字列を返す。PAD>Analog>Noneの優先順位。"""
+        if getattr(self, "branch_if_pad_enabled", False):
+            btn = getattr(self, "branch_if_pad_button", "")
+            if btn:
+                return str(btn)
+        if getattr(self, "branch_if_pad_analog_enabled", False):
+            axis = getattr(self, "branch_if_pad_analog_axis", "")
+            if axis:
+                return str(axis)
+        return None
 
     def _add_branch_output(self, label="default", priority=0):
         if self.output_count < 8:
@@ -8828,6 +8937,12 @@ class JointEditorPanel(QtWidgets.QWidget):
             return
         node.frames = int(self.pose_frames_spin.value())
         self._update_pose_duration_label()
+        # 左バッジ ([N]f) を即座に更新
+        try:
+            if getattr(node, "view", None) is not None:
+                node.view.update()
+        except Exception:
+            pass
 
     def _set_frames_preset(self, value):
         """Framesプリセットボタンから値を設定"""
@@ -15962,6 +16077,16 @@ if __name__ == '__main__':
                 _rm = motion_state.get("robot_model")
                 _jo = getattr(_rm, "joint_order", None) if _rm else None
                 joints_param = tuple(_jo) if _jo else None
+                # Servo per-joint speed presets — embedded as JOINT_MAX_SPEED_DEG_S
+                # in the cartridge so MotionPlayer.advance clamps at the same
+                # rate LME playback does. Without this, physics servo cannot
+                # follow short-duration POS commanded at impossible rates.
+                _je = getattr(graph, "joint_editor", None)
+                joint_settings_param = (
+                    dict(_je.joint_settings)
+                    if _je and getattr(_je, "joint_settings", None)
+                    else None
+                )
 
                 result = export_cartridge(
                     motion_action_state,
@@ -15973,6 +16098,7 @@ if __name__ == '__main__':
                     base_action_idx=base_action_idx,
                     project_code=getattr(graph, "project_code", "") or "",
                     joints=joints_param,
+                    joint_settings=joint_settings_param,
                 )
 
                 # Report.

@@ -6188,6 +6188,7 @@ class BranchingDialog(QtWidgets.QDialog):
             self.target_node.branch_if_formula_enabled = form_on
             self.target_node.branch_if_pad_enabled = pad_on
             self.target_node.branch_if_pad_analog_enabled = analog_on
+            self._request_node_view_update()
 
     def _apply_branch_formula_selection(self, text):
         if self.target_node:
@@ -6196,6 +6197,7 @@ class BranchingDialog(QtWidgets.QDialog):
     def _apply_branch_pad_condition(self, text):
         if self.target_node:
             self.target_node.branch_if_pad_button = text
+            self._request_node_view_update()
 
     def _on_analog_axis_changed(self, axis):
         lo, hi = PAD_IF_ANALOG_AXIS_RANGE.get(axis, (-127, 127))
@@ -6209,6 +6211,16 @@ class BranchingDialog(QtWidgets.QDialog):
             self.target_node.branch_if_pad_analog_axis = self.branch_pad_analog_axis_combo.currentText()
             self.target_node.branch_if_pad_analog_op = self.branch_pad_analog_op_combo.currentText()
             self.target_node.branch_if_pad_analog_threshold = self.branch_pad_analog_threshold_spin.value()
+            self._request_node_view_update()
+
+    def _request_node_view_update(self):
+        """左バッジ (PADボタン/アナログ軸) の再描画をトリガ"""
+        try:
+            view = getattr(self.target_node, "view", None)
+            if view is not None:
+                view.update()
+        except Exception:
+            pass
 
 
 # Backward compatibility alias
@@ -9068,9 +9080,22 @@ def is_motion_ref(value: Any) -> bool:
     )
 
 
+def _joint_is_rev_setting(jname: str, joint_settings: "dict | None") -> bool:
+    """Mirror LegacyMotionEditor.JointEditor._joint_is_rev (cannot import GUI code here)."""
+    if isinstance(joint_settings, dict):
+        setting = joint_settings.get(jname)
+        if isinstance(setting, dict):
+            if "rev" in setting:
+                return bool(setting["rev"])
+            if "dir" in setting:
+                return setting["dir"] == "CCW"
+    return jname.startswith("r_") and jname.endswith("_xr")
+
+
 def linearize_action_data(
     action_data: dict,
     action_index: int = 0,
+    joint_settings: "dict | None" = None,
 ) -> LinearizeResult:
     """Linearise a single Action's serialised graph into cartridge tuples."""
     result = LinearizeResult()
@@ -9190,7 +9215,13 @@ def linearize_action_data(
         node_easings = node.get("joint_easings") or {}
         joints_used_local: list[str] = []
         for jname, deg in angles.items():
-            converted = meridim_angle_from_joint(jname, float(deg))
+            # node.angles_deg は UI 表示値。LME 3D プレビュー (LMEValkeyClient.
+            # write_angles) は get_angles_for_3d() で Rev 関節を負反転した FK
+            # 角度を /mul してから送出しているため、カートリッジ側も同じ順序で
+            # Rev → /mul を通さないと Rev 関節 (arthropod の r_leg_*_xr など)
+            # だけ符号が反転し、実機では左右旋回に化ける。
+            fk_deg = -float(deg) if _joint_is_rev_setting(jname, joint_settings) else float(deg)
+            converted = meridim_angle_from_joint(jname, fk_deg)
             if converted is None:
                 add_warning(
                     node["id"], "pose",
@@ -9747,6 +9778,15 @@ def _apply_easing(idx: int, t: float) -> float:
 
 _MP_MAX_INSTANT = 100
 
+# Fallback if a legacy cartridge did not inject JOINT_MAX_SPEED_DEG_S before
+# SYSTEM_AREA. 300 deg/s matches LME's DEFAULT_JOINT_SPEED. Freshly exported
+# cartridges always define the dict per-joint above, so this is a safety net.
+_DEFAULT_MAX_SPEED_DEG_S = 300.0
+try:
+    JOINT_MAX_SPEED_DEG_S
+except NameError:
+    JOINT_MAX_SPEED_DEG_S = {}
+
 class MotionPlayer:
     """POS/CMP/JUMP/SET セグメントによるキーフレームモーション再生エンジン。
 
@@ -9850,14 +9890,31 @@ class MotionPlayer:
                 _span = self._next_ms - self._frame_dt
                 t = min(1.0, self._tmr / _span) if _span > 0 else 1.0
                 joint_easing_ = seg[2] if len(seg) > 2 else {}
+                # Per-tick angular budget from servo max_speed. Mirrors
+                # LME PlaybackController._apply_joint_speed_limits: cur only
+                # moves toward ideal by at most v_max*dt per tick, so short
+                # POS with impossible Δangle degrade gracefully instead of
+                # commanding the physics servo at unreachable rates.
+                _dt_sec = self._frame_dt / 1000.0
                 for idx, angle_end in target_joints.items():
                     es_t = _apply_easing(joint_easing_.get(idx, 0) if joint_easing_ else 0, t)
-                    self._data[idx]     = self._last[idx] + (angle_end - self._last[idx]) * es_t
+                    ideal = self._last[idx] + (angle_end - self._last[idx]) * es_t
+                    v_max = JOINT_MAX_SPEED_DEG_S.get(idx, _DEFAULT_MAX_SPEED_DEG_S)
+                    max_step = v_max * _dt_sec
+                    cur = self._data[idx]
+                    delta = ideal - cur
+                    if abs(delta) <= max_step:
+                        cur = ideal
+                    else:
+                        cur = cur + (max_step if delta >= 0 else -max_step)
+                    self._data[idx]     = cur
                     self._data[idx - 1] = 1.0
                 self._tmr += self._frame_dt
                 if self._tmr >= self._next_ms:
-                    for idx, angle in target_joints.items():
-                        self._data[idx] = angle
+                    # Do NOT snap _data[idx] to target — servo may not have
+                    # reached it within duration. Next segment's _last[idx]
+                    # captures actual (speed-limited) position and interpolates
+                    # from there. Matches LME playback behavior.
                     self._pc      += 1
                     self._last_pc  = -1
                 break
@@ -10117,6 +10174,7 @@ def export_cartridge(
     base_action_idx: int | None = None,
     project_code: str = "",
     joints: tuple[str, ...] | None = None,
+    joint_settings: "dict | None" = None,
 ) -> ExportResult:
     """Write a Logic Cartridge to ``save_path``."""
     items = motion_action_state.get("items", []) if motion_action_state else []
@@ -10146,7 +10204,8 @@ def export_cartridge(
         if not isinstance(data, dict):
             linearised.append(LinearizeResult())
             continue
-        linearised.append(linearize_action_data(data, action_index=i))
+        linearised.append(linearize_action_data(
+            data, action_index=i, joint_settings=joint_settings))
 
     all_warnings: list[LinearizeWarning] = []
     joints_used: set[str] = set()
@@ -10287,6 +10346,8 @@ def export_cartridge(
     parts: list[str] = [header]
     parts.append(_render_joints_dict(joints_dict))
     parts.append(_render_meridim_joint_map(meridim_map))
+    # Must be emitted BEFORE SYSTEM_AREA so MotionPlayer.advance can look it up.
+    parts.append(_render_joint_max_speed(meridim_map, joint_settings))
     # Runtime first, then ProjectCode so user controllers win.
     parts.append(SYSTEM_AREA)
     parts.append(_render_bhv_aliases())
@@ -10480,6 +10541,44 @@ def _render_meridim_joint_map(entries: list[dict]) -> str:
             f'    {{"joint": {joint!r}, "meridim": {m:3d}, "sign": {sign:+.1f}, "role": {role!r}}},'
         )
     lines.append("]")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _render_joint_max_speed(entries: list[dict],
+                            joint_settings: "dict | None") -> str:
+    """Emit JOINT_MAX_SPEED_DEG_S dict keyed by Meridim slot index.
+
+    Mirrors LME PlaybackController._apply_joint_speed_limits so that cartridge
+    MotionPlayer clamps per-tick angular step to the real servo speed and
+    produces the same trajectory LME 3D preview shows. Without this clamp,
+    short-duration POS with large Δangle commands the physics servo at
+    physically impossible rates and the actuator only jitters against its
+    force limit.
+    """
+    default_rads = float(DEFAULT_JOINT_SPEED)
+    default_degs = math.degrees(default_rads)
+    js = joint_settings or {}
+    lines = [
+        "# ── Servo max speed [deg/s] per Meridim slot (auto-generated) ────",
+        "# MotionPlayer clamps per-tick angular step to this rate so the",
+        "# cartridge trajectory matches LME 3D preview (which applies the",
+        "# same limit via PlaybackController._apply_joint_speed_limits).",
+        f"# Default fallback: {default_degs:.1f} deg/s (= DEFAULT_JOINT_SPEED).",
+        "JOINT_MAX_SPEED_DEG_S: dict[int, float] = {",
+    ]
+    for e in entries:
+        joint = e["joint"]
+        m = int(e["meridim"])
+        st = js.get(joint) or {}
+        rads = float(st.get("max_speed_rad_s", default_rads))
+        degs = max(1e-3, math.degrees(rads))
+        preset = str(st.get("speed_preset_name", "") or "").strip()
+        note = f"  # {joint}"
+        if preset:
+            note += f" ({preset})"
+        lines.append(f"    {m:3d}: {degs:8.3f},{note}")
+    lines.append("}")
     lines.append("")
     return "\n".join(lines)
 
