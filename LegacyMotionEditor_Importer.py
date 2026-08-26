@@ -9643,20 +9643,34 @@ class URDFRobotModel:
         Returns:
             VTK reader-like object (vtkSTLReader for converted file), or None on failure
         """
+        # 失敗を silent skip せず、_dae_load_errors に集約する。
+        # build_vtk_actors 終了時にまとめて 1 度だけダイアログ表示する。
+        if not hasattr(self, '_dae_load_errors'):
+            self._dae_load_errors = []
         try:
             import trimesh
         except ImportError:
-            print(f"[URDFRobotModel] trimesh not available for DAE loading: {mesh_path}")
-            print("  Install with: pip install trimesh pycollada")
+            _msg = ("trimesh not installed. pip install trimesh pycollada")
+            self._dae_load_errors.append((mesh_path, _msg))
+            print(f"[URDFRobotModel] {_msg} — cannot load {mesh_path}")
             return None
 
         try:
             import tempfile
-
-            # Load mesh with trimesh, using force='mesh' to automatically
-            # concatenate all meshes and apply transforms (same as Assembler)
             mesh = trimesh.load(mesh_path, force='mesh')
+        except Exception as e:
+            # pycollada 未インストールは trimesh の遅延 import で
+            # ここで ImportError として捕捉される。
+            _emsg = str(e)
+            if 'pycollada' in _emsg.lower():
+                _emsg = ("pycollada not installed. "
+                         "pip install pycollada (COLLADA .dae reader needed)")
+            self._dae_load_errors.append((mesh_path, _emsg))
+            print(f"[URDFRobotModel] Failed to load DAE file: {mesh_path}")
+            print(f"  Error: {_emsg}")
+            return None
 
+        try:
             # Export to temporary STL file
             temp_stl = tempfile.NamedTemporaryFile(suffix='.stl', delete=False)
             temp_stl_path = temp_stl.name
@@ -9676,6 +9690,7 @@ class URDFRobotModel:
             return reader
 
         except Exception as e:
+            self._dae_load_errors.append((mesh_path, str(e)))
             print(f"[URDFRobotModel] Failed to load DAE file: {mesh_path}")
             print(f"  Error: {e}")
             return None
@@ -9933,6 +9948,41 @@ class URDFRobotModel:
 
         print(f"[URDFRobotModel] Total actors loaded: {loaded_count}")
         print(f"[URDFRobotModel] Renderer actors count: {renderer.GetActors().GetNumberOfItems()}")
+
+        # DAE 読み込み失敗があればユーザーに 1 回だけダイアログ通知。
+        # pycollada 未インストールが最頻要因 (go1/go2/panda 等で全 mesh silent skip)。
+        _dae_errs = getattr(self, '_dae_load_errors', [])
+        if _dae_errs:
+            _needs_pycollada = any('pycollada' in _m.lower() for _p, _m in _dae_errs)
+            try:
+                from PySide6 import QtWidgets as _QW
+                _app = _QW.QApplication.instance()
+                if _app is not None:
+                    _mb = _QW.QMessageBox()
+                    _mb.setIcon(_QW.QMessageBox.Icon.Warning)
+                    _mb.setWindowTitle("Mesh load errors")
+                    _lines = [
+                        f"{len(_dae_errs)} DAE (COLLADA) mesh file(s) failed to load.",
+                        "3D view will show only meshes that loaded successfully.",
+                        "",
+                    ]
+                    if _needs_pycollada:
+                        _lines.extend([
+                            "This robot needs the 'pycollada' package to load .dae files.",
+                            "Please install it:",
+                            "    pip install pycollada",
+                            "",
+                        ])
+                    _lines.append("First few failed meshes:")
+                    for _p, _m in _dae_errs[:5]:
+                        _lines.append(f"  - {os.path.basename(_p)}: {_m[:80]}")
+                    if len(_dae_errs) > 5:
+                        _lines.append(f"  ... and {len(_dae_errs) - 5} more")
+                    _mb.setText("\n".join(_lines))
+                    _mb.exec()
+            except Exception:
+                pass
+            self._dae_load_errors = []
 
     def remove_actors(self):
         """すべてのアクターをレンダラーから削除"""

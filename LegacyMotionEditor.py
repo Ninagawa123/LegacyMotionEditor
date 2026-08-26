@@ -13576,6 +13576,29 @@ if __name__ == '__main__':
             model = (motion_state.get("urdf_path") or s.get("last_model_path") or "").strip()
             if model and not os.path.isfile(model):
                 model = ""
+            # Guard: URDF/xacro/sdf を MuJoCoStudio に渡そうとしたら止めて案内。
+            # MuJoCoStudio は MJCF (.xml) のみ扱う。urdf_kitchen で変換可能である旨も案内。
+            # https://github.com/Ninagawa123/LegacyMotionEditor/issues/1
+            if model:
+                _ext = os.path.splitext(model)[1].lower()
+                if _ext in (".urdf", ".xacro", ".sdf"):
+                    _btn_open = QtWidgets.QMessageBox.StandardButton.Ok
+                    _mb = QtWidgets.QMessageBox(main_window)
+                    _mb.setIcon(QtWidgets.QMessageBox.Icon.Information)
+                    _mb.setWindowTitle("MuJoCoStudio requires MJCF")
+                    _mb.setTextFormat(QtCore.Qt.TextFormat.RichText)
+                    _mb.setText(
+                        "<p>MuJoCoStudio can only open <b>MJCF (.xml)</b> files.<br>"
+                        f"Your file is a <b>{_ext.upper().lstrip('.')}</b> file:</p>"
+                        f"<pre>{model}</pre>"
+                        "<p>You can change URDF to MJCF with <b>URDF_kitchen</b>:<br>"
+                        '<a href="https://github.com/Ninagawa123/URDF_kitchen">'
+                        'https://github.com/Ninagawa123/URDF_kitchen</a></p>'
+                    )
+                    _mb.setStandardButtons(_btn_open)
+                    _mb.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextBrowserInteraction)
+                    _mb.exec()
+                    return
             cmd = [
                 sys.executable, studio_path,
                 "--valkey-host", str(getattr(lme_valkey, "_host", None) or s.get("valkey_host", VALKEY_DEFAULT_HOST)),
