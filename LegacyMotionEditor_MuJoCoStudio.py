@@ -513,6 +513,18 @@ def generate_play_mjcf(src_path: str, out_path: str,
                      pos=(0.0, 0.0, 0.27),
                      quat=(1.0, 0.0, 0.0, 0.0),
                      main_xml_dir: str | None = None) -> bool:
+    # Guard: 派生ファイル (_play.xml / _psclon.xml / _p1.xml / _p2.xml など) を
+    # ソースとして再度食わせると 2 重派生 (…_play_play.xml) や meshdir 二重計算で
+    # ロードに失敗する。派生名パターンを検出して即座に reject。
+    _src_stem = os.path.splitext(os.path.basename(src_path))[0]
+    _DERIVED_SUFFIXES = ("_play", "_psclon", "_p1", "_p2", "_p3", "_p4", "_p5", "_p6")
+    for _sfx in _DERIVED_SUFFIXES:
+        if _src_stem.endswith(_sfx):
+            logger.error(
+                "generate_play_mjcf: refusing derived MJCF as source: %s "
+                "(stem ends with %r). ソース MJCF (元ファイル) を指定してください。",
+                src_path, _sfx)
+            return False
     try:
         tree = ET.parse(src_path)
         root = tree.getroot()

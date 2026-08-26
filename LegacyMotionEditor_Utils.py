@@ -10426,6 +10426,16 @@ def _flatten_mjcf_for_psclon(src_path: str, dst_path: str) -> None:
           明示化して両方に伝える。既に指定されている側は上書きしない。)
     """
     import xml.etree.ElementTree as _ET
+    # Guard: 派生ファイル (_play/_psclon/_pN) を再入力すると 2 重派生 (_psclon_psclon
+    # 等) が発生するため即座に拒否。ソース MJCF を渡すことを期待する。
+    _src_stem = os.path.splitext(os.path.basename(src_path))[0]
+    _DERIVED_SUFFIXES = ("_play", "_psclon", "_p1", "_p2", "_p3", "_p4", "_p5", "_p6")
+    for _sfx in _DERIVED_SUFFIXES:
+        if _src_stem.endswith(_sfx):
+            raise ValueError(
+                f"_flatten_mjcf_for_psclon: refusing derived MJCF as source: "
+                f"{src_path} (stem ends with {_sfx!r}). "
+                f"ソース MJCF (元ファイル) を指定してください。")
     tree = _ET.parse(src_path)
     root = tree.getroot()
 

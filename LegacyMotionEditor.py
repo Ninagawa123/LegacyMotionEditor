@@ -12420,6 +12420,22 @@ def load_motion_data(data, graph, stl_viewer, joint_editor, playback_ctrl,
                     "All Files (*)",
                 )
                 if fp:
+                    # Guard: 派生 MJCF (_play/_psclon/_pN) をソースとして開こう
+                    # としたら警告して中止する。2 重派生や meshdir 二重計算で
+                    # scene ロードが破綻するのを防ぐ。
+                    _fp_stem = os.path.splitext(os.path.basename(fp))[0]
+                    _DERIVED = ("_play", "_psclon", "_p1", "_p2", "_p3", "_p4", "_p5", "_p6")
+                    _bad_sfx = next(
+                        (_s for _s in _DERIVED if _fp_stem.endswith(_s)), None)
+                    if _bad_sfx:
+                        QtWidgets.QMessageBox.warning(
+                            parent_window,
+                            "派生ファイルは開けません",
+                            f"選択されたファイル:\n  {fp}\n\n"
+                            f"末尾 '{_bad_sfx}' は LME/PhysicalOn が生成した"
+                            f"派生 MJCF です。ソース MJCF (元ファイル) を選択"
+                            f"してください。")
+                        return
                     # Remove existing actors before creating new ones
                     if motion_state and motion_state.get('robot_model'):
                         motion_state['robot_model'].remove_actors()
