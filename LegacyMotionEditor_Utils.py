@@ -10379,6 +10379,26 @@ def export_cartridge(
     with open(save_path, "w", encoding="utf-8") as f:
         f.write(text)
 
+    # PhysicalOn 用の "flat" MJCF (…_psclon.xml) をソース隣に併せて出力する。
+    # PhysicalOn の _generate_player_mjcf は
+    #   (a) <mesh file=..> の name 未指定
+    #   (b) 多階層 nested <default>
+    # を扱えないため、export 時にここで正規化しておくと PhysicalOn 側の
+    # 生成ロジックを変えずに済む (microban のような外部モデル対応)。
+    try:
+        _src_mjcf = (source_project or "").strip()
+        if _src_mjcf and os.path.isfile(_src_mjcf):
+            _stem = os.path.splitext(os.path.basename(_src_mjcf))[0]
+            _flat_path = os.path.join(
+                os.path.dirname(os.path.abspath(_src_mjcf)),
+                f"{_stem}_psclon.xml")
+            _flatten_mjcf_for_psclon(_src_mjcf, _flat_path)
+    except Exception as _flat_e:
+        # flat 生成失敗はカートリッジ出力自体を止めない (warning のみ)。
+        all_warnings.append(LinearizeWarning(
+            "", "flat_mjcf",
+            f"psclon flat MJCF generation failed: {_flat_e}"))
+
     return ExportResult(
         save_path=save_path,
         action_count=len(items),
@@ -10387,6 +10407,72 @@ def export_cartridge(
         boot_action_idx=boot_action_idx,
         base_action_idx=base_action_idx,
     )
+
+
+def _flatten_mjcf_for_psclon(src_path: str, dst_path: str) -> None:
+    """ソース MJCF を PhysicalOn (_generate_player_mjcf) が扱いやすい形に
+    正規化して dst_path に保存する。ソースは無傷。
+
+    行う変換 (該当要素が無ければ no-op、既存モデルへの副作用なし):
+      A. <mesh|texture|material|hfield> で name 属性が無く file 属性がある
+         要素に、file stem を name として設定する。
+         (MuJoCo は file stem を自動 name にするが、PhysicalOn の prefix 付与
+          コードが name 未指定要素を skip するため参照切れになる。)
+      B. Nested な <default class="X"> を top-level に promote する。
+         (PhysicalOn 側は first-level default のみ prefix する。)
+      D. <compiler assetdir="X"> を meshdir/texturedir に展開。
+         (assetdir は meshdir/texturedir 未指定時の fallback だが、
+          PhysicalOn の _generate_player_mjcf は meshdir のみ畳み込むので、
+          明示化して両方に伝える。既に指定されている側は上書きしない。)
+    """
+    import xml.etree.ElementTree as _ET
+    tree = _ET.parse(src_path)
+    root = tree.getroot()
+
+    # (A) 名前無し asset に file stem 由来の name を設定
+    _asset = root.find("asset")
+    if _asset is not None:
+        for _tag in ("mesh", "texture", "material", "hfield"):
+            for _el in _asset.findall(_tag):
+                if _el.get("name"):
+                    continue
+                _f = _el.get("file")
+                if _f:
+                    _stem = os.path.splitext(
+                        os.path.basename(_f.replace("\\", "/")))[0]
+                    _el.set("name", _stem)
+
+    # (B) Nested default を top-level に promote
+    _def_root = root.find("default")
+    if _def_root is not None:
+        _to_promote = []
+        def _walk(parent, depth):
+            for _c in list(parent):
+                if _c.tag == "default":
+                    if depth > 0:
+                        _to_promote.append((parent, _c))
+                    _walk(_c, depth + 1)
+        _walk(_def_root, 0)
+        for _parent, _child in _to_promote:
+            _parent.remove(_child)
+            _def_root.append(_child)
+
+    # (D) <compiler assetdir=X> → <compiler meshdir=X texturedir=X>
+    _compiler = root.find("compiler")
+    if _compiler is not None:
+        _assetdir = _compiler.get("assetdir")
+        if _assetdir:
+            if not _compiler.get("meshdir"):
+                _compiler.set("meshdir", _assetdir)
+            if not _compiler.get("texturedir"):
+                _compiler.set("texturedir", _assetdir)
+            del _compiler.attrib["assetdir"]
+
+    try:
+        _ET.indent(root, space="  ")
+    except AttributeError:
+        pass
+    tree.write(dst_path, encoding="unicode", xml_declaration=False)
 
 
 # ---------------------------------------------------------------------------
