@@ -642,8 +642,9 @@ class CustomNodeItem(NodeItem):
             painter.drawText(body_rect, _align, body)
             painter.setFont(text_item.font())
 
-        # 左バッジ描画（Pose: frame数、Branching: PADボタン/アナログ軸）
-        # ノードが _compute_left_badge callable を提供している場合のみ描画する
+        # Draw the left-side badge. Pose shows the frame count, and
+        # Branching shows a PAD button name or an analog axis name.
+        # Only drawn when the node has a _compute_left_badge callable.
         badge_fn = getattr(self, "_compute_left_badge", None)
         badge_text = None
         if callable(badge_fn):
@@ -7152,7 +7153,7 @@ class PoseNode(BaseNode):
         self._original_double_click = self.view.mouseDoubleClickEvent
         self.view.mouseDoubleClickEvent = self._on_double_click
 
-        # 左バッジ: フレーム数を [N]f 形式で表示
+        # Left badge shows the frame count, formatted as "[N]f".
         try:
             self.view._compute_left_badge = lambda n=self: f"{int(getattr(n, 'frames', 0))}f"
         except Exception:
@@ -7601,7 +7602,8 @@ class BranchingNode(BaseNode):
         self._original_double_click = self.view.mouseDoubleClickEvent
         self.view.mouseDoubleClickEvent = self._on_double_click
 
-        # 左バッジ: IF-PAD 有効ならボタン名、IF-Analog 有効なら軸名
+        # Left badge shows the PAD button name if IF-PAD is on,
+        # or the analog axis name if IF-Analog is on.
         try:
             self.view._compute_left_badge = self._compute_left_badge_text
         except Exception:
@@ -7610,7 +7612,7 @@ class BranchingNode(BaseNode):
         QtCore.QTimer.singleShot(20, self._apply_branching_node_colors)
 
     def _compute_left_badge_text(self):
-        """左バッジ用文字列を返す。PAD>Analog>Noneの優先順位。"""
+        """Return the left-badge text. Priority: PAD button > Analog axis > None."""
         if getattr(self, "branch_if_pad_enabled", False):
             btn = getattr(self, "branch_if_pad_button", "")
             if btn:
@@ -8937,7 +8939,7 @@ class JointEditorPanel(QtWidgets.QWidget):
             return
         node.frames = int(self.pose_frames_spin.value())
         self._update_pose_duration_label()
-        # 左バッジ ([N]f) を即座に更新
+        # Redraw the left badge "[N]f" right away.
         try:
             if getattr(node, "view", None) is not None:
                 node.view.update()
@@ -12420,9 +12422,10 @@ def load_motion_data(data, graph, stl_viewer, joint_editor, playback_ctrl,
                     "All Files (*)",
                 )
                 if fp:
-                    # Guard: 派生 MJCF (_play/_psclon/_pN) をソースとして開こう
-                    # としたら警告して中止する。2 重派生や meshdir 二重計算で
-                    # scene ロードが破綻するのを防ぐ。
+                    # Refuse a derived MJCF (_play / _psclon / _pN) as the
+                    # source. If a derived file is loaded again, we make
+                    # double-derived files (like _play_play.xml) and rewrite
+                    # the mesh paths twice, and the scene stops loading.
                     _fp_stem = os.path.splitext(os.path.basename(fp))[0]
                     _DERIVED = ("_play", "_psclon", "_p1", "_p2", "_p3", "_p4", "_p5", "_p6")
                     _bad_sfx = next(
@@ -12430,11 +12433,11 @@ def load_motion_data(data, graph, stl_viewer, joint_editor, playback_ctrl,
                     if _bad_sfx:
                         QtWidgets.QMessageBox.warning(
                             parent_window,
-                            "派生ファイルは開けません",
-                            f"選択されたファイル:\n  {fp}\n\n"
-                            f"末尾 '{_bad_sfx}' は LME/PhysicalOn が生成した"
-                            f"派生 MJCF です。ソース MJCF (元ファイル) を選択"
-                            f"してください。")
+                            "Cannot open a derived file",
+                            f"Selected file:\n  {fp}\n\n"
+                            f"The suffix '{_bad_sfx}' means this MJCF was "
+                            f"made by LME or PhysicalOn from an original "
+                            f"file. Please open the original MJCF instead.")
                         return
                     # Remove existing actors before creating new ones
                     if motion_state and motion_state.get('robot_model'):
@@ -13576,8 +13579,9 @@ if __name__ == '__main__':
             model = (motion_state.get("urdf_path") or s.get("last_model_path") or "").strip()
             if model and not os.path.isfile(model):
                 model = ""
-            # Guard: URDF/xacro/sdf を MuJoCoStudio に渡そうとしたら止めて案内。
-            # MuJoCoStudio は MJCF (.xml) のみ扱う。urdf_kitchen で変換可能である旨も案内。
+            # Do not open URDF / xacro / SDF files in MuJoCoStudio.
+            # MuJoCoStudio can only open MJCF (.xml). Tell the user to
+            # use urdf_kitchen, which can change URDF into MJCF.
             # https://github.com/Ninagawa123/LegacyMotionEditor/issues/1
             if model:
                 _ext = os.path.splitext(model)[1].lower()

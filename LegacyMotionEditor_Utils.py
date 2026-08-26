@@ -9215,11 +9215,14 @@ def linearize_action_data(
         node_easings = node.get("joint_easings") or {}
         joints_used_local: list[str] = []
         for jname, deg in angles.items():
-            # node.angles_deg は UI 表示値。LME 3D プレビュー (LMEValkeyClient.
-            # write_angles) は get_angles_for_3d() で Rev 関節を負反転した FK
-            # 角度を /mul してから送出しているため、カートリッジ側も同じ順序で
-            # Rev → /mul を通さないと Rev 関節 (arthropod の r_leg_*_xr など)
-            # だけ符号が反転し、実機では左右旋回に化ける。
+            # node.angles_deg is the UI value. The LME 3D preview
+            # (LMEValkeyClient.write_angles) flips the sign of Rev joints
+            # with get_angles_for_3d() to get the FK angle, and then
+            # divides by mul before sending. The cartridge path must do
+            # the same thing in the same order: flip Rev first, then
+            # divide by mul. If not, Rev joints (like arthropod
+            # r_leg_*_xr) get the wrong sign, and the real robot turns
+            # left/right instead of walking straight.
             fk_deg = -float(deg) if _joint_is_rev_setting(jname, joint_settings) else float(deg)
             converted = meridim_angle_from_joint(jname, fk_deg)
             if converted is None:
@@ -10379,12 +10382,12 @@ def export_cartridge(
     with open(save_path, "w", encoding="utf-8") as f:
         f.write(text)
 
-    # PhysicalOn 用の "flat" MJCF (…_psclon.xml) をソース隣に併せて出力する。
-    # PhysicalOn の _generate_player_mjcf は
-    #   (a) <mesh file=..> の name 未指定
-    #   (b) 多階層 nested <default>
-    # を扱えないため、export 時にここで正規化しておくと PhysicalOn 側の
-    # 生成ロジックを変えずに済む (microban のような外部モデル対応)。
+    # Also write a "flat" MJCF (..._psclon.xml) next to the source, for
+    # PhysicalOn to use. PhysicalOn's _generate_player_mjcf cannot handle:
+    #   (a) <mesh file=..> without a name
+    #   (b) <default> blocks nested more than one level deep
+    # Doing the fix here at export time keeps PhysicalOn's own code
+    # unchanged, and it still works for outside models like microban.
     try:
         _src_mjcf = (source_project or "").strip()
         if _src_mjcf and os.path.isfile(_src_mjcf):
@@ -10394,7 +10397,8 @@ def export_cartridge(
                 f"{_stem}_psclon.xml")
             _flatten_mjcf_for_psclon(_src_mjcf, _flat_path)
     except Exception as _flat_e:
-        # flat 生成失敗はカートリッジ出力自体を止めない (warning のみ)。
+        # A flat-generation failure must NOT block the cartridge export
+        # itself (log as a warning only).
         all_warnings.append(LinearizeWarning(
             "", "flat_mjcf",
             f"psclon flat MJCF generation failed: {_flat_e}"))
@@ -10410,24 +10414,28 @@ def export_cartridge(
 
 
 def _flatten_mjcf_for_psclon(src_path: str, dst_path: str) -> None:
-    """ソース MJCF を PhysicalOn (_generate_player_mjcf) が扱いやすい形に
-    正規化して dst_path に保存する。ソースは無傷。
+    """Read a source MJCF and save a cleaned-up copy to dst_path, so that
+    PhysicalOn's _generate_player_mjcf can load it. The source file is
+    never changed.
 
-    行う変換 (該当要素が無ければ no-op、既存モデルへの副作用なし):
-      A. <mesh|texture|material|hfield> で name 属性が無く file 属性がある
-         要素に、file stem を name として設定する。
-         (MuJoCo は file stem を自動 name にするが、PhysicalOn の prefix 付与
-          コードが name 未指定要素を skip するため参照切れになる。)
-      B. Nested な <default class="X"> を top-level に promote する。
-         (PhysicalOn 側は first-level default のみ prefix する。)
-      D. <compiler assetdir="X"> を meshdir/texturedir に展開。
-         (assetdir は meshdir/texturedir 未指定時の fallback だが、
-          PhysicalOn の _generate_player_mjcf は meshdir のみ畳み込むので、
-          明示化して両方に伝える。既に指定されている側は上書きしない。)
+    Three fixes are applied. Each fix does nothing when it does not apply,
+    so it is safe for every model:
+      A. If <mesh> / <texture> / <material> / <hfield> has file="..." but
+         no name="...", add a name from the file stem. MuJoCo uses the
+         file stem as a default name, but PhysicalOn skips assets without
+         a name, so references would break.
+      B. Move nested <default class="X"> blocks up to the top level.
+         PhysicalOn only adds a prefix to top-level <default> blocks, so
+         nested ones would be missed.
+      D. Turn <compiler assetdir="X"> into meshdir="X" texturedir="X".
+         MuJoCo uses assetdir as a fallback for both, but PhysicalOn only
+         folds meshdir. If meshdir or texturedir is already set, keep it.
     """
     import xml.etree.ElementTree as _ET
-    # Guard: 派生ファイル (_play/_psclon/_pN) を再入力すると 2 重派生 (_psclon_psclon
-    # 等) が発生するため即座に拒否。ソース MJCF を渡すことを期待する。
+    # Refuse a derived file (_play / _psclon / _pN...) as the source.
+    # If a derived file is passed in again, we get double-derived output
+    # (like ..._psclon_psclon.xml) and mesh paths get rewritten twice.
+    # Always expect the original source MJCF here.
     _src_stem = os.path.splitext(os.path.basename(src_path))[0]
     _DERIVED_SUFFIXES = ("_play", "_psclon", "_p1", "_p2", "_p3", "_p4", "_p5", "_p6")
     for _sfx in _DERIVED_SUFFIXES:
@@ -10435,11 +10443,11 @@ def _flatten_mjcf_for_psclon(src_path: str, dst_path: str) -> None:
             raise ValueError(
                 f"_flatten_mjcf_for_psclon: refusing derived MJCF as source: "
                 f"{src_path} (stem ends with {_sfx!r}). "
-                f"ソース MJCF (元ファイル) を指定してください。")
+                f"Please pass the source MJCF instead.")
     tree = _ET.parse(src_path)
     root = tree.getroot()
 
-    # (A) 名前無し asset に file stem 由来の name を設定
+    # (A) Give unnamed assets an explicit name derived from the file stem.
     _asset = root.find("asset")
     if _asset is not None:
         for _tag in ("mesh", "texture", "material", "hfield"):
@@ -10452,7 +10460,7 @@ def _flatten_mjcf_for_psclon(src_path: str, dst_path: str) -> None:
                         os.path.basename(_f.replace("\\", "/")))[0]
                     _el.set("name", _stem)
 
-    # (B) Nested default を top-level に promote
+    # (B) Promote nested <default> blocks to top level.
     _def_root = root.find("default")
     if _def_root is not None:
         _to_promote = []
@@ -10467,7 +10475,7 @@ def _flatten_mjcf_for_psclon(src_path: str, dst_path: str) -> None:
             _parent.remove(_child)
             _def_root.append(_child)
 
-    # (D) <compiler assetdir=X> → <compiler meshdir=X texturedir=X>
+    # (D) Expand <compiler assetdir=X> into meshdir + texturedir.
     _compiler = root.find("compiler")
     if _compiler is not None:
         _assetdir = _compiler.get("assetdir")

@@ -9643,8 +9643,8 @@ class URDFRobotModel:
         Returns:
             VTK reader-like object (vtkSTLReader for converted file), or None on failure
         """
-        # 失敗を silent skip せず、_dae_load_errors に集約する。
-        # build_vtk_actors 終了時にまとめて 1 度だけダイアログ表示する。
+        # Do not skip errors quietly. Save them into _dae_load_errors, and
+        # show one dialog at the end of build_vtk_actors.
         if not hasattr(self, '_dae_load_errors'):
             self._dae_load_errors = []
         try:
@@ -9659,8 +9659,9 @@ class URDFRobotModel:
             import tempfile
             mesh = trimesh.load(mesh_path, force='mesh')
         except Exception as e:
-            # pycollada 未インストールは trimesh の遅延 import で
-            # ここで ImportError として捕捉される。
+            # If pycollada is missing, trimesh raises the error here (it
+            # only loads pycollada when needed). Catch it and turn the
+            # message into a clear hint for the user.
             _emsg = str(e)
             if 'pycollada' in _emsg.lower():
                 _emsg = ("pycollada not installed. "
@@ -9949,8 +9950,10 @@ class URDFRobotModel:
         print(f"[URDFRobotModel] Total actors loaded: {loaded_count}")
         print(f"[URDFRobotModel] Renderer actors count: {renderer.GetActors().GetNumberOfItems()}")
 
-        # DAE 読み込み失敗があればユーザーに 1 回だけダイアログ通知。
-        # pycollada 未インストールが最頻要因 (go1/go2/panda 等で全 mesh silent skip)。
+        # If any DAE file failed to load, show one dialog to the user.
+        # The most common cause is that pycollada is not installed.
+        # Before this fix, robots like go1 / go2 / panda lost all their
+        # .dae meshes with no warning.
         _dae_errs = getattr(self, '_dae_load_errors', [])
         if _dae_errs:
             _needs_pycollada = any('pycollada' in _m.lower() for _p, _m in _dae_errs)

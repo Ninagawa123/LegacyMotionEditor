@@ -513,16 +513,17 @@ def generate_play_mjcf(src_path: str, out_path: str,
                      pos=(0.0, 0.0, 0.27),
                      quat=(1.0, 0.0, 0.0, 0.0),
                      main_xml_dir: str | None = None) -> bool:
-    # Guard: 派生ファイル (_play.xml / _psclon.xml / _p1.xml / _p2.xml など) を
-    # ソースとして再度食わせると 2 重派生 (…_play_play.xml) や meshdir 二重計算で
-    # ロードに失敗する。派生名パターンを検出して即座に reject。
+    # Refuse a derived file (_play.xml / _psclon.xml / _p1.xml / _p2.xml, ...)
+    # as the source. If a derived file is passed in again, we get
+    # double-derived output (like ..._play_play.xml) and mesh paths get
+    # rewritten twice, which breaks loading. Check the suffix and stop.
     _src_stem = os.path.splitext(os.path.basename(src_path))[0]
     _DERIVED_SUFFIXES = ("_play", "_psclon", "_p1", "_p2", "_p3", "_p4", "_p5", "_p6")
     for _sfx in _DERIVED_SUFFIXES:
         if _src_stem.endswith(_sfx):
             logger.error(
                 "generate_play_mjcf: refusing derived MJCF as source: %s "
-                "(stem ends with %r). ソース MJCF (元ファイル) を指定してください。",
+                "(stem ends with %r). Please pass the source MJCF instead.",
                 src_path, _sfx)
             return False
     try:
@@ -537,15 +538,17 @@ def generate_play_mjcf(src_path: str, out_path: str,
             logger.error("MJCF parse failed: %s", e)
             return False
 
-    # Read original meshdir before removing compiler (e.g. NE555 uses meshdir="assets").
+    # Read the original meshdir before we remove <compiler>. For example,
+    # NE555 uses meshdir="assets".
     src_dir = os.path.dirname(os.path.abspath(src_path))
     compiler_el = root.find("compiler")
     orig_meshdir = compiler_el.get("meshdir", "") if compiler_el is not None else ""
 
-    # <compiler> は下で meshdir を書き換えて再挿入するため一旦削除。
-    # <option> はモデル固有の integrator/timestep 等 (例: NE555sp の
-    # implicitfast) を残すため保持する。scene 側に <option> があれば
-    # そちらが最終的に採用される (MJCF include 仕様)。
+    # Remove <compiler> for now. A new <compiler> with a rewritten meshdir
+    # is added below. Keep <option> as it is, so per-model settings such
+    # as integrator or timestep (like NE555sp's "implicitfast") are kept.
+    # If the scene also has its own <option>, the scene's <option> wins
+    # (this is how MJCF includes work).
     for el in list(root.findall("compiler")):
         root.remove(el)
 
@@ -731,17 +734,20 @@ class StudioApp:
         self._status = ""
         self._font_sm = None
 
-        # 物理ループの wall-clock accumulator。描画レートに関係なく
-        # sim_time = wall_time を保つ (100Hz 目標)。カタチュップ上限で
-        # spiral-of-death を防ぐ。
+        # Wall-clock accumulator for the physics loop. This keeps
+        # sim_time equal to real time (target 100 Hz), no matter how
+        # fast or slow the render loop runs. There is a catch-up cap
+        # to stop the "spiral of death".
         self._physics_wall_last: Optional[float] = None
         self._physics_accum: float = 0.0
-        # 5 frame 分 (100Hz × 50ms) までまとめて catch-up 可能。
-        # rendering が一時的に遅延しても物理は追いつく。
+        # If the render loop stalls for a moment, catch up by at most
+        # 5 physics frames (100 Hz x 50 ms) at a time. This way physics
+        # will not fall behind forever.
         self._physics_max_catchup_sec: float = 0.05
 
-        # HUD 用フレームレート統計 (1秒平均、PhysicalOn と同じ 3 行フォーマット)。
-        # Render: 描画ループ回数/秒。Physics: mj_step 回数/秒。Sim: sim/wall%。
+        # HUD frame-rate stats (1-second average, same 3-line layout as
+        # PhysicalOn). Render = render loops per second, Physics =
+        # mj_step calls per second, Sim = sim_time / wall_time in %.
         self._fps_render_count: int = 0
         self._fps_physics_count: int = 0
         self._sim_advanced_sec: float = 0.0
@@ -811,9 +817,9 @@ class StudioApp:
         scene = self.prepare_scene()
         self.model = mujoco.MjModel.from_xml_path(scene)
         self.data = mujoco.MjData(self.model)
-        # モーションノード 1 frame = 10ms と 1:1 対応させる。物理ループは
-        # wall-clock accumulator で回すので、この timestep が「1 tick で
-        # 進む sim 時間」= 「1 モーション frame」となる。
+        # 1 motion-node frame = 10 ms, so use the same 10 ms here.
+        # The physics loop uses a wall-clock accumulator, so each tick
+        # advances sim time by exactly this timestep = one motion frame.
         self.model.opt.timestep = 0.010
         mujoco.mjv_defaultCamera(self.cam)
         self.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
@@ -1292,10 +1298,12 @@ class StudioApp:
                         self._status = "Valkey OFF (auto-start failed)"
                         logger.warning("Valkey auto-start via Docker failed")
 
-                # Physics: wall-clock accumulator 方式 (PhysicalOn と同方針)。
-                # 前回 tick からの実経過時間を timestep 単位で mj_step に消化する。
-                # これで rendering が 60FPS でも 30FPS でも sim_time = wall_time を維持。
-                # 上限 (_physics_max_catchup_sec) で spiral of death を防ぐ。
+                # Physics: wall-clock accumulator (same as PhysicalOn).
+                # Take the real time that passed since the last tick, and
+                # call mj_step for each timestep worth of it. This keeps
+                # sim_time equal to real time, even if rendering runs at
+                # 60 FPS or drops to 30 FPS. The cap
+                # (_physics_max_catchup_sec) stops the spiral of death.
                 if self.model is not None and self.data is not None:
                     self.sync_ctrl()
                     _wall_now = time.perf_counter()
@@ -1312,14 +1320,15 @@ class StudioApp:
                         self._physics_accum -= _steps * _dt
                         for _ in range(_steps):
                             mujoco.mj_step(self.model, self.data)
-                        # HUD 用: 実行 step 数と進んだ sim 時間を集計
+                        # For the HUD: count how many steps ran, and how
+                        # much sim time was advanced.
                         self._fps_physics_count += _steps
                         self._sim_advanced_sec += _steps * _dt
                     self.sync_sensors()
                     if self.meta_arr is not None and self.meta_arr[META_RESET_REQUESTED]:
                         self.meta_arr[META_RESET_REQUESTED] = 0.0
                         self.respawn_model()
-                        # respawn 後は accumulator をリセット
+                        # After respawn, clear the accumulator.
                         self._physics_wall_last = None
                         self._physics_accum = 0.0
 
@@ -1371,8 +1380,8 @@ class StudioApp:
                     self._font_sm.render(f"model: {model_lbl}", True, (55, 60, 70)),
                     (12, 48))
 
-                # FPS HUD (bottom-left): Render / Physics / Sim time%
-                # PhysicalOn と同じ 3 行フォーマット、1 秒間隔で平均更新。
+                # FPS HUD (bottom-left): Render / Physics / Sim time %.
+                # Same 3-line layout as PhysicalOn, average over 1 second.
                 self._fps_render_count += 1
                 _fps_now_wall = time.time()
                 if self._fps_last_update == 0.0:
