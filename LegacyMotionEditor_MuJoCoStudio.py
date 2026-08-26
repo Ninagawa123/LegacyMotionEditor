@@ -530,9 +530,12 @@ def generate_play_mjcf(src_path: str, out_path: str,
     compiler_el = root.find("compiler")
     orig_meshdir = compiler_el.get("meshdir", "") if compiler_el is not None else ""
 
-    for tag in ("compiler", "option"):
-        for el in list(root.findall(tag)):
-            root.remove(el)
+    # <compiler> は下で meshdir を書き換えて再挿入するため一旦削除。
+    # <option> はモデル固有の integrator/timestep 等 (例: NE555sp の
+    # implicitfast) を残すため保持する。scene 側に <option> があれば
+    # そちらが最終的に採用される (MJCF include 仕様)。
+    for el in list(root.findall("compiler")):
+        root.remove(el)
 
     # Resolve actual mesh directory, accounting for the original meshdir attribute.
     if orig_meshdir:
@@ -716,6 +719,25 @@ class StudioApp:
         self._status = ""
         self._font_sm = None
 
+        # 物理ループの wall-clock accumulator。描画レートに関係なく
+        # sim_time = wall_time を保つ (100Hz 目標)。カタチュップ上限で
+        # spiral-of-death を防ぐ。
+        self._physics_wall_last: Optional[float] = None
+        self._physics_accum: float = 0.0
+        # 5 frame 分 (100Hz × 50ms) までまとめて catch-up 可能。
+        # rendering が一時的に遅延しても物理は追いつく。
+        self._physics_max_catchup_sec: float = 0.05
+
+        # HUD 用フレームレート統計 (1秒平均、PhysicalOn と同じ 3 行フォーマット)。
+        # Render: 描画ループ回数/秒。Physics: mj_step 回数/秒。Sim: sim/wall%。
+        self._fps_render_count: int = 0
+        self._fps_physics_count: int = 0
+        self._sim_advanced_sec: float = 0.0
+        self._fps_last_update: float = 0.0
+        self._fps_render_cached: float = 0.0
+        self._fps_physics_cached: float = 0.0
+        self._sim_realtime_cached: float = 0.0
+
         self._button_down = False
         self._last_mouse = (0, 0)
         self._orbit_btn = 1  # left
@@ -777,7 +799,10 @@ class StudioApp:
         scene = self.prepare_scene()
         self.model = mujoco.MjModel.from_xml_path(scene)
         self.data = mujoco.MjData(self.model)
-        self.model.opt.timestep = 0.002
+        # モーションノード 1 frame = 10ms と 1:1 対応させる。物理ループは
+        # wall-clock accumulator で回すので、この timestep が「1 tick で
+        # 進む sim 時間」= 「1 モーション frame」となる。
+        self.model.opt.timestep = 0.010
         mujoco.mjv_defaultCamera(self.cam)
         self.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
         if restore_cam:
@@ -1255,16 +1280,36 @@ class StudioApp:
                         self._status = "Valkey OFF (auto-start failed)"
                         logger.warning("Valkey auto-start via Docker failed")
 
-                # Physics
+                # Physics: wall-clock accumulator 方式 (PhysicalOn と同方針)。
+                # 前回 tick からの実経過時間を timestep 単位で mj_step に消化する。
+                # これで rendering が 60FPS でも 30FPS でも sim_time = wall_time を維持。
+                # 上限 (_physics_max_catchup_sec) で spiral of death を防ぐ。
                 if self.model is not None and self.data is not None:
                     self.sync_ctrl()
-                    steps = max(1, int(round((1.0 / 60.0) / float(self.model.opt.timestep))))
-                    for _ in range(steps):
-                        mujoco.mj_step(self.model, self.data)
+                    _wall_now = time.perf_counter()
+                    if self._physics_wall_last is None:
+                        self._physics_wall_last = _wall_now
+                    _wall_elapsed = min(
+                        max(0.0, _wall_now - self._physics_wall_last),
+                        self._physics_max_catchup_sec)
+                    self._physics_wall_last = _wall_now
+                    self._physics_accum += _wall_elapsed
+                    _dt = float(self.model.opt.timestep)
+                    _steps = int(self._physics_accum / _dt) if _dt > 0 else 0
+                    if _steps > 0:
+                        self._physics_accum -= _steps * _dt
+                        for _ in range(_steps):
+                            mujoco.mj_step(self.model, self.data)
+                        # HUD 用: 実行 step 数と進んだ sim 時間を集計
+                        self._fps_physics_count += _steps
+                        self._sim_advanced_sec += _steps * _dt
                     self.sync_sensors()
                     if self.meta_arr is not None and self.meta_arr[META_RESET_REQUESTED]:
                         self.meta_arr[META_RESET_REQUESTED] = 0.0
                         self.respawn_model()
+                        # respawn 後は accumulator をリセット
+                        self._physics_wall_last = None
+                        self._physics_accum = 0.0
 
                 # Render MuJoCo → pygame surface
                 assert self.renderer is not None and self.data is not None
@@ -1313,6 +1358,33 @@ class StudioApp:
                 screen.blit(
                     self._font_sm.render(f"model: {model_lbl}", True, (55, 60, 70)),
                     (12, 48))
+
+                # FPS HUD (bottom-left): Render / Physics / Sim time%
+                # PhysicalOn と同じ 3 行フォーマット、1 秒間隔で平均更新。
+                self._fps_render_count += 1
+                _fps_now_wall = time.time()
+                if self._fps_last_update == 0.0:
+                    self._fps_last_update = _fps_now_wall
+                _fps_dt = _fps_now_wall - self._fps_last_update
+                if _fps_dt >= 1.0:
+                    self._fps_render_cached = self._fps_render_count / _fps_dt
+                    self._fps_physics_cached = self._fps_physics_count / _fps_dt
+                    self._sim_realtime_cached = 100.0 * self._sim_advanced_sec / _fps_dt
+                    self._fps_render_count = 0
+                    self._fps_physics_count = 0
+                    self._sim_advanced_sec = 0.0
+                    self._fps_last_update = _fps_now_wall
+                _hud_col = (160, 160, 160)
+                _hud_x = 12
+                _hud_line_h = self._font_sm.get_height() + 2
+                _hud_y_base = self.win_h - (_hud_line_h * 3 + 12)
+                for i, _txt in enumerate([
+                        f"Render : {self._fps_render_cached:5.1f} FPS",
+                        f"Physics: {self._fps_physics_cached:5.1f} Hz",
+                        f"Sim    : {self._sim_realtime_cached:5.1f} %"]):
+                    screen.blit(
+                        self._font_sm.render(_txt, True, _hud_col),
+                        (_hud_x, _hud_y_base + i * _hud_line_h))
 
                 pygame.display.flip()
                 clock.tick(60)
