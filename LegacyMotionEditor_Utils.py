@@ -1222,18 +1222,18 @@ VTK_BG_GRADIENT_TYPE = "vertical"
 # =============================================================================
 
 PAD_BUTTON_NAMES = (
-    "L1", "L2", "DPad_Up", "DPad_Left", "DPad_Right", "DPad_Down",
-    "Select", "Start", "Triangle", "Square", "Circle", "Cross", "R1", "R2"
+    "L1", "L2", "L3", "DPad_Up", "DPad_Left", "DPad_Right", "DPad_Down",
+    "Select", "Start", "Triangle", "Square", "Circle", "Cross", "R1", "R2", "R3"
 )
 PAD_AXIS_NAMES = ("Lx", "Ly", "Rx", "Ry", "L2v", "R2v")
 
 PAD_REGISTER_VALUES = {
     "Pad_btn": 0,
-    "Pad_L1": 0, "Pad_L2": 0,
+    "Pad_L1": 0, "Pad_L2": 0, "Pad_L3": 0,
     "Pad_DPad_Up": 0, "Pad_DPad_Left": 0, "Pad_DPad_Right": 0, "Pad_DPad_Down": 0,
     "Pad_Select": 0, "Pad_Start": 0,
     "Pad_Triangle": 0, "Pad_Square": 0, "Pad_Circle": 0, "Pad_Cross": 0,
-    "Pad_R1": 0, "Pad_R2": 0,
+    "Pad_R1": 0, "Pad_R2": 0, "Pad_R3": 0,
     "Pad_Lx": 0, "Pad_Ly": 0, "Pad_Rx": 0, "Pad_Ry": 0,
     "Pad_L2v": 0, "Pad_R2v": 0,
 }
@@ -1256,13 +1256,14 @@ PAD_BUTTON_BIT_VALUES = {
     "pad_btn_l_left": 128, "pad_btn_l_right": 32,
     "pad_btn_l1": 1024, "pad_btn_l2": 256,
     "pad_btn_r1": 2048, "pad_btn_r2": 512,
+    "pad_btn_l3": 2, "pad_btn_r3": 4,
     "pad_btn_select": 1, "pad_btn_start": 8,
     "pad_btn_none": 0, "pad_btn_0": 0,
 }
 
 # Branching PAD mode: button choices and mapping to PAD_REGISTER_VALUES keys
 PAD_IF_BUTTON_CHOICES = (
-    "L1", "L2", "R1", "R2",
+    "L1", "L2", "L3", "R1", "R2", "R3",
     "TRI", "CIR", "SQR", "CRS",
     "UP", "DOWN", "LEFT", "RIGHT",
     "SELECT", "START",
@@ -1270,8 +1271,10 @@ PAD_IF_BUTTON_CHOICES = (
 PAD_IF_BUTTON_TO_PAD_KEY = {
     "L1":       "Pad_L1",
     "L2":       "Pad_L2",
+    "L3":       "Pad_L3",
     "R1":       "Pad_R1",
     "R2":       "Pad_R2",
+    "R3":       "Pad_R3",
     "TRI":      "Pad_Triangle",
     "CIR":      "Pad_Circle",
     "SQR":      "Pad_Square",
@@ -3020,6 +3023,8 @@ class PadMonitorDialog(QtWidgets.QDialog):
         ("DPad Down", 80, 110, 64),
         ("Select", 160, 84, 1),
         ("Start", 206, 84, 8),
+        ("L3", 160, 110, 2),
+        ("R3", 206, 110, 4),
         ("Triangle", 290, 58, 4096),
         ("Square", 260, 84, 32768),
         ("Circle", 320, 84, 8192),
@@ -4357,6 +4362,18 @@ class PadMonitorDialog(QtWidgets.QDialog):
         self._set_button("Select", self._mac_gc_button_pressed(opt))
         self._set_button("Start", self._mac_gc_button_pressed(menu))
 
+        # L3/R3 (thumbstick press) — GCExtendedGamepad (iOS13/macOS10.15+)
+        for stick_attr, logical in (
+            ("leftThumbstickButton", "L3"),
+            ("rightThumbstickButton", "R3"),
+        ):
+            try:
+                b = getattr(pad, stick_attr, None)
+                b = b() if callable(b) else b
+            except Exception:
+                b = None
+            self._set_button(logical, self._mac_gc_button_pressed(b))
+
         try:
             d = pad.dpad
             d = d() if callable(d) else d
@@ -4662,6 +4679,8 @@ class PadMonitorDialog(QtWidgets.QDialog):
         BTN_ST = getattr(m, "CONTROLLER_BUTTON_START",        6)
         BTN_LS = getattr(m, "CONTROLLER_BUTTON_LEFTSHOULDER", 9)
         BTN_RS = getattr(m, "CONTROLLER_BUTTON_RIGHTSHOULDER", 10)
+        BTN_L3 = getattr(m, "CONTROLLER_BUTTON_LEFTSTICK",    7)
+        BTN_R3 = getattr(m, "CONTROLLER_BUTTON_RIGHTSTICK",   8)
         BTN_DU = getattr(m, "CONTROLLER_BUTTON_DPAD_UP",      11)
         BTN_DD = getattr(m, "CONTROLLER_BUTTON_DPAD_DOWN",    12)
         BTN_DL = getattr(m, "CONTROLLER_BUTTON_DPAD_LEFT",    13)
@@ -4691,6 +4710,8 @@ class PadMonitorDialog(QtWidgets.QDialog):
         self._set_button("Triangle", bool(c.get_button(BTN_Y)))
         self._set_button("L1",       bool(c.get_button(BTN_LS)))
         self._set_button("R1",       bool(c.get_button(BTN_RS)))
+        self._set_button("L3",       bool(c.get_button(BTN_L3)))
+        self._set_button("R3",       bool(c.get_button(BTN_R3)))
         self._set_button("Select",   bool(c.get_button(BTN_BK)))
         self._set_button("Start",    bool(c.get_button(BTN_ST)))
 
@@ -4727,6 +4748,8 @@ class PadMonitorDialog(QtWidgets.QDialog):
                 3: "Triangle",
                 4: "Select",
                 6: "Start",
+                7: "L3",
+                8: "R3",
                 9: "L1",
                 10: "R1",
             }
@@ -4742,6 +4765,8 @@ class PadMonitorDialog(QtWidgets.QDialog):
                 7: "Start",
                 8: "L2",
                 9: "R2",
+                10: "L3",
+                11: "R3",
             }
 
         button_count = joy.get_numbuttons()
@@ -8837,10 +8862,25 @@ class LMEMotionRuntime:
     joint angles for the LME 3D preview and Valkey send.
     """
 
-    PAD_AXIS_LX = 16
-    PAD_AXIS_LY = 17
-    PAD_AXIS_RX = 18
-    PAD_AXIS_RY = 19
+    PAD_AXIS_LX  = 16
+    PAD_AXIS_LY  = 17
+    PAD_AXIS_RX  = 18
+    PAD_AXIS_RY  = 19
+    PAD_AXIS_L2V = 20
+    PAD_AXIS_R2V = 21
+    PAD_HAT_X    = 22
+    PAD_HAT_Y    = 23
+    # Button pad-list slots (must match SYSTEM_AREA PAD_BTN_* constants).
+    PAD_BTN_CRS    =  0
+    PAD_BTN_CIR    =  1
+    PAD_BTN_SQR    =  2
+    PAD_BTN_TRI    =  3
+    PAD_BTN_SELECT =  4
+    PAD_BTN_START  =  5
+    PAD_BTN_L3     =  6
+    PAD_BTN_R3     =  7
+    PAD_BTN_L1     =  9
+    PAD_BTN_R1     = 10
 
     def __init__(self):
         self._commander = LMECommanderStub()
@@ -8858,6 +8898,7 @@ class LMEMotionRuntime:
 
     def sync_pad_from_registers(self, pad_values: dict) -> None:
         scale = 127.0
+        trig_scale = 255.0
         pad = self._commander._pad[:]
         # LME の Pad_Ly は UI 座標（スティック前 = +）。
         # ProjectCode の _pad_axes は Meridim 生値前提で fwd = -pad[LY] する。
@@ -8866,6 +8907,28 @@ class LMEMotionRuntime:
         pad[self.PAD_AXIS_LY] = -pad_values.get("Pad_Ly", 0) / scale
         pad[self.PAD_AXIS_RX] =  pad_values.get("Pad_Rx", 0) / scale
         pad[self.PAD_AXIS_RY] =  pad_values.get("Pad_Ry", 0) / scale
+        pad[self.PAD_AXIS_L2V] = pad_values.get("Pad_L2v", 0) / trig_scale
+        pad[self.PAD_AXIS_R2V] = pad_values.get("Pad_R2v", 0) / trig_scale
+        # D-pad → HAT (matches SYSTEM_AREA _decode_meridim_pad convention)
+        hat_x = 0.0
+        if pad_values.get("Pad_DPad_Right", 0): hat_x =  1.0
+        elif pad_values.get("Pad_DPad_Left", 0): hat_x = -1.0
+        hat_y = 0.0
+        if pad_values.get("Pad_DPad_Up", 0):   hat_y =  1.0
+        elif pad_values.get("Pad_DPad_Down", 0): hat_y = -1.0
+        pad[self.PAD_HAT_X] = hat_x
+        pad[self.PAD_HAT_Y] = hat_y
+        # Button slots (1.0 = held).
+        pad[self.PAD_BTN_CRS]    = 1.0 if pad_values.get("Pad_Cross",    0) else 0.0
+        pad[self.PAD_BTN_CIR]    = 1.0 if pad_values.get("Pad_Circle",   0) else 0.0
+        pad[self.PAD_BTN_SQR]    = 1.0 if pad_values.get("Pad_Square",   0) else 0.0
+        pad[self.PAD_BTN_TRI]    = 1.0 if pad_values.get("Pad_Triangle", 0) else 0.0
+        pad[self.PAD_BTN_L1]     = 1.0 if pad_values.get("Pad_L1",       0) else 0.0
+        pad[self.PAD_BTN_R1]     = 1.0 if pad_values.get("Pad_R1",       0) else 0.0
+        pad[self.PAD_BTN_SELECT] = 1.0 if pad_values.get("Pad_Select",   0) else 0.0
+        pad[self.PAD_BTN_START]  = 1.0 if pad_values.get("Pad_Start",    0) else 0.0
+        pad[self.PAD_BTN_L3]     = 1.0 if pad_values.get("Pad_L3",       0) else 0.0
+        pad[self.PAD_BTN_R3]     = 1.0 if pad_values.get("Pad_R3",       0) else 0.0
         self._commander.set_pad(pad)
         if self._ns is not None:
             self._ns["PAD_REGISTER_VALUES"] = pad_values  # shared ref (ProjectCode may write flags)
@@ -8940,17 +9003,24 @@ class LMEMotionRuntime:
             "dataclass": dataclass,
             "field": field,
             "PAD_REGISTER_VALUES": PAD_REGISTER_VALUES,  # shared ref
-            "PAD_BTN_TRI": 3,
-            "PAD_BTN_CIR": 1,
-            "PAD_BTN_CRS": 0,
-            "PAD_BTN_SQR": 2,
-            "PAD_BTN_L1": 9,
-            "PAD_BTN_R1": 10,
-            "PAD_AXIS_LX": self.PAD_AXIS_LX,
-            "PAD_AXIS_LY": self.PAD_AXIS_LY,
-            "PAD_AXIS_RX": self.PAD_AXIS_RX,
-            "PAD_AXIS_RY": self.PAD_AXIS_RY,
-            "PAD_HAT_Y": 23,
+            "PAD_BTN_TRI":    self.PAD_BTN_TRI,
+            "PAD_BTN_CIR":    self.PAD_BTN_CIR,
+            "PAD_BTN_CRS":    self.PAD_BTN_CRS,
+            "PAD_BTN_SQR":    self.PAD_BTN_SQR,
+            "PAD_BTN_L1":     self.PAD_BTN_L1,
+            "PAD_BTN_R1":     self.PAD_BTN_R1,
+            "PAD_BTN_SELECT": self.PAD_BTN_SELECT,
+            "PAD_BTN_START":  self.PAD_BTN_START,
+            "PAD_BTN_L3":     self.PAD_BTN_L3,
+            "PAD_BTN_R3":     self.PAD_BTN_R3,
+            "PAD_AXIS_LX":    self.PAD_AXIS_LX,
+            "PAD_AXIS_LY":    self.PAD_AXIS_LY,
+            "PAD_AXIS_RX":    self.PAD_AXIS_RX,
+            "PAD_AXIS_RY":    self.PAD_AXIS_RY,
+            "PAD_AXIS_L2V":   self.PAD_AXIS_L2V,
+            "PAD_AXIS_R2V":   self.PAD_AXIS_R2V,
+            "PAD_HAT_X":      self.PAD_HAT_X,
+            "PAD_HAT_Y":      self.PAD_HAT_Y,
             "BTN_THRESH": 0.5,
             "IDX_L_SHOULDER_PITCH": 23, "IDX_L_SHOULDER_ROLL": 25,
             "IDX_L_ELBOW_YAW": 27, "IDX_L_ELBOW_PITCH": 29,
@@ -9016,32 +9086,50 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 _PAD_TO_BTN_CODE = {
-    "Pad_L1":        "L1",
-    "Pad_R1":        "R1",
-    "Pad_Triangle":  "TRI",
-    "Pad_Circle":    "CIR",
-    "Pad_Square":    "SQR",
-    "Pad_Cross":     "CRS",
-    "Pad_DPad_Up":   "UP",
-    "Pad_DPad_Down": "DOWN",
-    "Pad_DPad_R_UP": "UP",
+    "Pad_L1":          "L1",
+    "Pad_R1":          "R1",
+    "Pad_L2":          "L2",
+    "Pad_R2":          "R2",
+    "Pad_L3":          "L3",
+    "Pad_R3":          "R3",
+    "Pad_Select":      "SELECT",
+    "Pad_Start":       "START",
+    "Pad_Triangle":    "TRI",
+    "Pad_Circle":      "CIR",
+    "Pad_Square":      "SQR",
+    "Pad_Cross":       "CRS",
+    "Pad_DPad_Up":     "UP",
+    "Pad_DPad_Down":   "DOWN",
+    "Pad_DPad_Left":   "LEFT",
+    "Pad_DPad_Right":  "RIGHT",
+    "Pad_DPad_R_UP":   "UP",
     "Pad_DPad_R_DOWN": "DOWN",
-    "Pad_Lx": "LX",
-    "Pad_Ly": "LY",
-    "Pad_Rx": "RX",
-    "Pad_Ry": "RY",
+    "Pad_Lx":  "LX",
+    "Pad_Ly":  "LY",
+    "Pad_Rx":  "RX",
+    "Pad_Ry":  "RY",
+    "Pad_L2v": "L2V",
+    "Pad_R2v": "R2V",
 }
 
 # pad_btn_* bit name → cartridge button code (for Pad_btn bitmask conditions).
 _PAD_BIT_TO_BTN_CODE = {
-    "pad_btn_l1": "L1",
-    "pad_btn_r1": "R1",
-    "pad_btn_r_up": "TRI",
+    "pad_btn_l1":     "L1",
+    "pad_btn_r1":     "R1",
+    "pad_btn_l2":     "L2",
+    "pad_btn_r2":     "R2",
+    "pad_btn_l3":     "L3",
+    "pad_btn_r3":     "R3",
+    "pad_btn_select": "SELECT",
+    "pad_btn_start":  "START",
+    "pad_btn_r_up":    "TRI",
     "pad_btn_r_right": "CIR",
-    "pad_btn_r_left": "SQR",
-    "pad_btn_r_down": "CRS",
-    "pad_btn_l_up": "UP",
-    "pad_btn_l_down": "DOWN",
+    "pad_btn_r_left":  "SQR",
+    "pad_btn_r_down":  "CRS",
+    "pad_btn_l_up":    "UP",
+    "pad_btn_l_down":  "DOWN",
+    "pad_btn_l_left":  "LEFT",
+    "pad_btn_l_right": "RIGHT",
 }
 
 _LME_OP_TO_CARTRIDGE_OP = {
@@ -9288,7 +9376,7 @@ def linearize_action_data(
     _ANALOG_AXIS_TO_PAD_KEY = {
         "Lx": "LX", "Ly": "LY",
         "Rx": "RX", "Ry": "RY",
-        "L2v": "Pad_L2v", "R2v": "Pad_R2v",
+        "L2v": "L2V", "R2v": "R2V",
     }
 
     def _emit_branch(node: dict) -> None:
@@ -9565,23 +9653,35 @@ SYSTEM_AREA = r'''
 # ══════════════════════════════════════════════════════════════════════════════
 
 # ── Pad layout ────────────────────────────────────────────────────────────────
-PAD_BTN_TRI  =  3   # △
-PAD_BTN_CIR  =  1   # ○
-PAD_BTN_CRS  =  0   # ×
-PAD_BTN_SQR  =  2   # □
-PAD_BTN_L1   =  9   # L1
-PAD_BTN_R1   = 10   # R1
-PAD_AXIS_LX  = 16   # left  stick X  (left=-1, right=+1)
-PAD_AXIS_LY  = 17   # left  stick Y  (up=-1=fwd, down=+1=back)
-PAD_AXIS_RX  = 18   # right stick X
-PAD_AXIS_RY  = 19   # right stick Y
-PAD_HAT_Y    = 23   # D-pad Y  (+1=up, -1=down)
-BTN_THRESH   = 0.5
+PAD_BTN_TRI    =  3   # △
+PAD_BTN_CIR    =  1   # ○
+PAD_BTN_CRS    =  0   # ×
+PAD_BTN_SQR    =  2   # □
+PAD_BTN_SELECT =  4   # SHARE / Select
+PAD_BTN_START  =  5   # OPTIONS / Start
+PAD_BTN_L3     =  6   # 左スティック押込
+PAD_BTN_R3     =  7   # 右スティック押込
+PAD_BTN_L1     =  9   # L1
+PAD_BTN_R1     = 10   # R1
+PAD_AXIS_LX    = 16   # left  stick X  (left=-1, right=+1)
+PAD_AXIS_LY    = 17   # left  stick Y  (up=-1=fwd, down=+1=back)
+PAD_AXIS_RX    = 18   # right stick X
+PAD_AXIS_RY    = 19   # right stick Y
+PAD_AXIS_L2V   = 20   # L2 analog trigger (0.0..1.0)
+PAD_AXIS_R2V   = 21   # R2 analog trigger (0.0..1.0)
+PAD_HAT_X      = 22   # D-pad X  (+1=right, -1=left)
+PAD_HAT_Y      = 23   # D-pad Y  (+1=up, -1=down)
+BTN_THRESH     = 0.5
 
 _BTN_NAME_TO_PAD_IDX: dict[str, int] = {
-    "L1":  PAD_BTN_L1,  "R1":  PAD_BTN_R1,
-    "TRI": PAD_BTN_TRI, "CIR": PAD_BTN_CIR,
-    "SQR": PAD_BTN_SQR, "CRS": PAD_BTN_CRS,
+    "L1":     PAD_BTN_L1,     "R1":     PAD_BTN_R1,
+    "TRI":    PAD_BTN_TRI,    "CIR":    PAD_BTN_CIR,
+    "SQR":    PAD_BTN_SQR,    "CRS":    PAD_BTN_CRS,
+    "SELECT": PAD_BTN_SELECT, "START":  PAD_BTN_START,
+    "L3":     PAD_BTN_L3,     "R3":     PAD_BTN_R3,
+    # NOTE: L2 / R2 は analog trigger (pad[PAD_AXIS_L2V/R2V]) から
+    #       BTN_THRESH で判定するため辞書には入れず、_eval_src の
+    #       明示分岐で扱う。
 }
 
 # ── Meridim90 joint indices ───────────────────────────────────────────────────
@@ -9613,7 +9713,13 @@ def _decode_meridim_pad(s: list) -> list:
     """s_meridim[15..18] → 24-element pad list."""
     pad = [0.0] * 24
     bitmask = int(float(s[15])) & 0xFFFF
-    for bit, idx in {4096: 3, 8192: 1, 16384: 0, 32768: 2, 1024: 9, 2048: 10}.items():
+    # bit → pad-list slot (see PAD_BTN_* constants below).
+    for bit, idx in {
+        4096: 3, 8192: 1, 16384: 0, 32768: 2,   # △○×□
+        1024: 9, 2048: 10,                        # L1/R1
+        1: 4, 8: 5,                               # Select/Start
+        2: 6, 4: 7,                               # L3/R3
+    }.items():
         if bitmask & bit:
             pad[idx] = 1.0
     if bitmask & 16:    pad[23] =  1.0
@@ -9653,14 +9759,23 @@ class Pad:
         self.sqr      = bool(bitmask & 32768)
         self.l1       = bool(bitmask & 1024)
         self.r1       = bool(bitmask & 2048)
+        self.l3       = bool(bitmask & 2)
+        self.r3       = bool(bitmask & 4)
+        self.select   = bool(bitmask & 1)
+        self.start    = bool(bitmask & 8)
         self.hat_up   = bool(bitmask & 16)
         self.hat_down = bool(bitmask & 64)
         self.hat_r    = bool(bitmask & 32)
         self.hat_l    = bool(bitmask & 128)
-        self.lx = raw[PAD_AXIS_LX]
-        self.ly = raw[PAD_AXIS_LY]
-        self.rx = raw[PAD_AXIS_RX]
-        self.ry = raw[PAD_AXIS_RY]
+        self.lx  = raw[PAD_AXIS_LX]
+        self.ly  = raw[PAD_AXIS_LY]
+        self.rx  = raw[PAD_AXIS_RX]
+        self.ry  = raw[PAD_AXIS_RY]
+        self.l2v = raw[PAD_AXIS_L2V]
+        self.r2v = raw[PAD_AXIS_R2V]
+        # L2/R2 のデジタル判定は analog トリガーのしきい値で行う (PadMonitor と同じ挙動)。
+        self.l2  = self.l2v > BTN_THRESH
+        self.r2  = self.r2v > BTN_THRESH
 
 
 # ── Joint helpers ─────────────────────────────────────────────────────────────
@@ -9835,14 +9950,27 @@ class MotionPlayer:
         btn_idx = _BTN_NAME_TO_PAD_IDX.get(src)
         if btn_idx is not None:
             return float(pad[btn_idx]) if pad is not None else 0.0
+        # D-pad (hat) discretes
         if src == "UP":
             return 1.0 if (pad is not None and pad[PAD_HAT_Y] >= 1.0) else 0.0
         if src == "DOWN":
             return 1.0 if (pad is not None and pad[PAD_HAT_Y] <= -1.0) else 0.0
-        if src == "LX":  return float(pad[PAD_AXIS_LX]) if pad is not None else 0.0
-        if src == "LY":  return float(pad[PAD_AXIS_LY]) if pad is not None else 0.0
-        if src == "RX":  return float(pad[PAD_AXIS_RX]) if pad is not None else 0.0
-        if src == "RY":  return float(pad[PAD_AXIS_RY]) if pad is not None else 0.0
+        if src == "LEFT":
+            return 1.0 if (pad is not None and pad[PAD_HAT_X] <= -1.0) else 0.0
+        if src == "RIGHT":
+            return 1.0 if (pad is not None and pad[PAD_HAT_X] >= 1.0) else 0.0
+        # L2/R2 button = analog trigger past BTN_THRESH
+        if src == "L2":
+            return 1.0 if (pad is not None and pad[PAD_AXIS_L2V] > BTN_THRESH) else 0.0
+        if src == "R2":
+            return 1.0 if (pad is not None and pad[PAD_AXIS_R2V] > BTN_THRESH) else 0.0
+        # Sticks & analog triggers (raw values)
+        if src == "LX":  return float(pad[PAD_AXIS_LX])  if pad is not None else 0.0
+        if src == "LY":  return float(pad[PAD_AXIS_LY])  if pad is not None else 0.0
+        if src == "RX":  return float(pad[PAD_AXIS_RX])  if pad is not None else 0.0
+        if src == "RY":  return float(pad[PAD_AXIS_RY])  if pad is not None else 0.0
+        if src == "L2V": return float(pad[PAD_AXIS_L2V]) if pad is not None else 0.0
+        if src == "R2V": return float(pad[PAD_AXIS_R2V]) if pad is not None else 0.0
         return self._variables.get(src, 0.0)
 
     def _eval_cmp(self, src: str, op: str, value: float, pad: list | None) -> bool:
