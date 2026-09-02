@@ -16120,6 +16120,14 @@ if __name__ == '__main__':
                 _rm = motion_state.get("robot_model")
                 _jo = getattr(_rm, "joint_order", None) if _rm else None
                 joints_param = tuple(_jo) if _jo else None
+                # MJCF-loaded models expose the set of joints backed by an
+                # <actuator>. Passing it lets export_cartridge drop passive
+                # linkage joints (parallelogram followers, coincident-anchored
+                # ankles, etc.) so PhysicalOn's _resolve_player_joint_map does
+                # not fail with "expected one actuator, found 0" and disable
+                # the whole player. URDF loads leave this set empty → no-op.
+                _aj = getattr(_rm, "actuator_joints", None) if _rm else None
+                actuator_joints_param = set(_aj) if _aj else None
                 # Servo per-joint speed presets — embedded as JOINT_MAX_SPEED_DEG_S
                 # in the cartridge so MotionPlayer.advance clamps at the same
                 # rate LME playback does. Without this, physics servo cannot
@@ -16142,6 +16150,7 @@ if __name__ == '__main__':
                     project_code=getattr(graph, "project_code", "") or "",
                     joints=joints_param,
                     joint_settings=joint_settings_param,
+                    actuator_joints=actuator_joints_param,
                 )
 
                 # Report.

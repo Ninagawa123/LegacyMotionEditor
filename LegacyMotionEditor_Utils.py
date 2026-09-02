@@ -781,6 +781,15 @@ JOINT_TO_MERIDIM = {
     "r_knee_yp":                            (67,  1.0),
     "r_ankle_yp":                           (69,  1.0),
     "r_ankle_xr":                           (71, -1.0),
+    # === 4-bar linkage aliases (_1 suffix = actuator-driven mid-chain joint) ===
+    # In parallel-linkage legs (e.g. ashigaru), the servo actuator is placed on
+    # the mid-chain joint (X_knee_yp_1) rather than the top joint (X_knee_yp).
+    # These aliases route the same Meridim slot as the primary "_yp" name so
+    # LME keyframes AND MuJoCo Studio actuators land on the same wire slot.
+    "l_knee_yp_1":                          (37,  1.0),
+    "r_knee_yp_1":                          (67,  1.0),
+    "l_ankle_yp_1":                         (39,  1.0),
+    "r_ankle_yp_1":                         (69,  1.0),
     # === Original MJCF joint names (leven_mjcf / roid1.urdf raw names) ===
     "l_hipjoint_zy":                             (31,  1.0),
     "l_hipjoint_xr":                             (33,  1.0),
@@ -975,12 +984,18 @@ def _cartridge_joint_used(mjcf_name: str, joints_used: set[str]) -> bool:
 def build_joints_dict(
     joints_used: set[str] | None = None,
     joints: tuple[str, ...] | None = None,
+    actuator_joints: "set[str] | None" = None,
 ) -> dict[str, int]:
     """{SHORT_NAME: meridim_idx} for exported cartridge JOINTS dict."""
     result: dict[str, int] = {}
     for mjcf_name in (joints if joints is not None else CANONICAL_MJCF_JOINTS):
         entry = JOINT_TO_MERIDIM.get(mjcf_name)
         if entry is None:
+            continue
+        # Passive joints without <actuator> cannot be commanded by the
+        # cartridge — PhysicalOn._resolve_player_joint_map would raise
+        # "expected one actuator, found 0" and disable the whole player.
+        if actuator_joints and mjcf_name not in actuator_joints:
             continue
         if joints_used is not None and not _cartridge_joint_used(mjcf_name, joints_used):
             continue
@@ -993,16 +1008,23 @@ def build_joints_dict(
 def build_meridim_joint_map(
     joints: tuple[str, ...] | None = None,
     role: str = "servo",
+    actuator_joints: "set[str] | None" = None,
 ) -> list[dict]:
     """MERIDIM_JOINT_MAP entries for PhysicalOn (canonical MJCF joint names).
 
     Pass ``joints`` (from robot_model.joint_order) to use the loaded model's
     actual joint list instead of the humanoid-only CANONICAL_MJCF_JOINTS.
+    ``actuator_joints`` (from robot_model.actuator_joints) restricts the map
+    to joints backed by an MJCF <actuator>; passive linkage joints (e.g.
+    parallelogram followers) are silently skipped so PhysicalOn's
+    _resolve_player_joint_map does not abort.
     """
     entries: list[dict] = []
     for mjcf_name in (joints if joints is not None else CANONICAL_MJCF_JOINTS):
         entry = JOINT_TO_MERIDIM.get(mjcf_name)
         if entry is None:
+            continue
+        if actuator_joints and mjcf_name not in actuator_joints:
             continue
         meridim_idx, sign = entry
         entries.append({
@@ -10306,6 +10328,7 @@ def export_cartridge(
     project_code: str = "",
     joints: tuple[str, ...] | None = None,
     joint_settings: "dict | None" = None,
+    actuator_joints: "set[str] | None" = None,
 ) -> ExportResult:
     """Write a Logic Cartridge to ``save_path``."""
     items = motion_action_state.get("items", []) if motion_action_state else []
@@ -10438,10 +10461,22 @@ def export_cartridge(
     for i, lines in enumerate(resolved_lines):
         _validate_motion_lines(lines, action_index=i, warnings=all_warnings)
 
-    joints_dict = build_joints_dict(joints_used=None, joints=joints)
-    meridim_map = build_meridim_joint_map(joints=joints)
+    joints_dict = build_joints_dict(
+        joints_used=None, joints=joints, actuator_joints=actuator_joints)
+    meridim_map = build_meridim_joint_map(
+        joints=joints, actuator_joints=actuator_joints)
     if not meridim_map:
         raise ValueError("MERIDIM_JOINT_MAP is empty — JOINT_TO_MERIDIM has no canonical joints")
+    if actuator_joints and joints:
+        _skipped = [
+            j for j in joints
+            if j not in actuator_joints and j in JOINT_TO_MERIDIM
+        ]
+        if _skipped:
+            print(
+                "[export_cartridge] skipped passive joints without <actuator>: "
+                f"{_skipped}"
+            )
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # HEADER_TEMPLATE embeds these directly inside the generated file's own
